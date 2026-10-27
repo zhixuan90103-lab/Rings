@@ -56,9 +56,13 @@ export function connectorLayout(outer: number, band: number, stemLen: number): {
  * The clasp can sit at any angle, so this radius does not depend on `angle`.
  * Clasp samples match `bentClasp`: arc radius `bend`, profile ±claspW/2.
  */
-export function connectorReach(outer: number, band: number, stemLen: number): number {
+/** Stem and clasp corners in the connector's local frame. +X runs out from the ring center. */
+export function connectorPoints(outer: number, band: number, stemLen: number): { x: number; y: number }[] {
   const { stemLen: length, stemW, claspLen, claspW, stemDist, claspDist, bend } = connectorLayout(outer, band, stemLen);
-  let max = Math.max(outer, Math.hypot(stemDist + length / 2, stemW / 2));
+  const points: { x: number; y: number }[] = [];
+  for (const along of [-length / 2, length / 2]) {
+    for (const side of [-stemW / 2, stemW / 2]) points.push({ x: stemDist + along, y: side });
+  }
   const arc = Math.max(bend, 1e-4);
   const half = claspLen / 2 / arc;
   const rot = Math.PI / 2;
@@ -67,10 +71,19 @@ export function connectorReach(outer: number, band: number, stemLen: number): nu
     for (const u of [-claspW / 2, claspW / 2]) {
       const lx = Math.cos(a) * (bend + u);
       const ly = -bend + Math.sin(a) * (bend + u);
-      const x = Math.cos(rot) * lx - Math.sin(rot) * ly + claspDist;
-      const y = Math.sin(rot) * lx + Math.cos(rot) * ly;
-      max = Math.max(max, Math.hypot(x, y));
+      points.push({
+        x: Math.cos(rot) * lx - Math.sin(rot) * ly + claspDist,
+        y: Math.sin(rot) * lx + Math.cos(rot) * ly,
+      });
     }
+  }
+  return points;
+}
+
+export function connectorReach(outer: number, band: number, stemLen: number): number {
+  let max = outer;
+  for (const point of connectorPoints(outer, band, stemLen)) {
+    max = Math.max(max, Math.hypot(point.x, point.y));
   }
   return max;
 }

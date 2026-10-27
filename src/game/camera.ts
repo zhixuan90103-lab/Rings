@@ -8,7 +8,7 @@
 
 import { DESIGN_HEIGHT, DESIGN_WIDTH } from '../adapt/design';
 import type { Board } from './board';
-import { buckleMetrics, connectorReach, PART } from './parts';
+import { buckleMetrics, connectorPoints, PART } from './parts';
 
 export const VIEW_H = 10;
 /** Empty design pixels kept around the level, inside the chrome. */
@@ -69,13 +69,17 @@ export function boardBounds(board: Board): Aabb {
     maxY = Math.max(maxY, y);
   };
   for (const ring of board.rings) {
+    add(ring.x - ring.outer, ring.y - ring.outer);
+    add(ring.x + ring.outer, ring.y + ring.outer);
     const band = ring.outer * PART.bandRatio;
-    let reach = ring.outer;
     for (const connector of ring.connectors) {
-      reach = Math.max(reach, connectorReach(ring.outer, band, connector.stem));
+      const angle = ring.theta + connector.angle;
+      const c = Math.cos(angle);
+      const s = Math.sin(angle);
+      for (const point of connectorPoints(ring.outer, band, connector.stem)) {
+        add(ring.x + c * point.x - s * point.y, ring.y + s * point.x + c * point.y);
+      }
     }
-    add(ring.x - reach, ring.y - reach);
-    add(ring.x + reach, ring.y + reach);
   }
   const basis = PART.outer * 2 * PART.scale;
   for (const bar of board.bars) {

@@ -1,6 +1,7 @@
 import type { Board, RingBody } from './board';
 import { syncPins } from './board';
 import { wrapAngle } from './angle';
+import { boardBounds } from './camera';
 import { PART, connectorLayout, connectorMetrics } from './parts';
 import type { RingConnector } from './board';
 
@@ -343,34 +344,10 @@ export function seatConnectors(board: Board): void {
 
 /** Shift the whole level so its drawn bounds sit on the screen center, (0, 0). */
 export function centerBoard(board: Board): void {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  const add = (x: number, y: number): void => {
-    minX = Math.min(minX, x);
-    minY = Math.min(minY, y);
-    maxX = Math.max(maxX, x);
-    maxY = Math.max(maxY, y);
-  };
-  for (const ring of board.rings) {
-    add(ring.x - ring.outer, ring.y - ring.outer);
-    add(ring.x + ring.outer, ring.y + ring.outer);
-  }
-  for (const bar of board.bars) {
-    const cx = bar.x0 + (bar.x1 - bar.x0) * bar.t;
-    const cy = bar.y0 + (bar.y1 - bar.y0) * bar.t;
-    const len = Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) || 1;
-    const ux = (bar.x1 - bar.x0) / len;
-    const uy = (bar.y1 - bar.y0) / len;
-    for (const sign of [-1, 1]) {
-      add(cx + ux * bar.grip * sign - uy * bar.half, cy + uy * bar.grip * sign + ux * bar.half);
-      add(cx + ux * bar.grip * sign + uy * bar.half, cy + uy * bar.grip * sign - ux * bar.half);
-    }
-  }
-  if (!Number.isFinite(minX)) return;
-  const dx = (minX + maxX) / 2;
-  const dy = (minY + maxY) / 2;
+  const box = boardBounds(board);
+  if (!Number.isFinite(box.minX)) return;
+  const dx = (box.minX + box.maxX) / 2;
+  const dy = (box.minY + box.maxY) / 2;
   if (Math.hypot(dx, dy) < 1e-4) return;
   for (const ring of board.rings) {
     ring.x -= dx;

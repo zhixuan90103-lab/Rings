@@ -172,7 +172,7 @@ export function ringWithConnectors(
   return group;
 }
 
-/** Capsule plus one centered buckle. Buckle size follows the unstretched bar length. */
+/** Capsule plus one centered buckle. Buckle size follows the unstretched bar length. The buckle stays fixed when the capsule slides. */
 export function barWithBuckle(length: number, buckleBasis: number, width: number, depth: number, color: number): THREE.Group {
   const group = new THREE.Group();
   group.add(capsuleBar(length, width, depth, color));

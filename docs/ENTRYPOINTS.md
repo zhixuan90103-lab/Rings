@@ -18,7 +18,7 @@ index.html
   → main.ts
        → applyNativeClass / safeArea
        → createRenderer(#stage)
-       → mountPlay（当前画 docs/PARTS.md 的零件表）
+       → mountPlay（画 docs/PARTS.md 的零件表：转环、滑红棍，银卡扣锁定）
        → mountDevicePreview → computeStageLayout → applyStageTransform
        → watchStageLayout
        → haptics + HUD buttons

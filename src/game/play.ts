@@ -293,8 +293,15 @@ export function mountPlay(options: {
     } else if (effect.type === 'free') {
       feedback.state.armed = effect.armed;
       feedback.state.free = effect.free;
-    } else if (effect.type === 'hold') feedback.holdRing(drag.id, rejected);
-    else if (effect.type === 'stop') {
+    } else if (effect.type === 'hold') {
+      feedback.holdRing(drag.id, rejected);
+      if (feedback.state.armed) {
+        feedback.state.armed = false;
+        feedback.state.free = 0;
+        showImpact(drag.kind, drag.id, Math.sign(rejected) || 1);
+      }
+    } else if (effect.type === 'stop') {
+      showImpact(drag.kind, drag.id, Math.sign(rejected) || 1);
       const bar = barById(board, drag.id);
       const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
       feedback.stopBar(drag.id, rejected, length);

@@ -239,6 +239,49 @@ export function barOccupiesGap(bar: BarBody, t: number, ring: RingBody): boolean
   return false;
 }
 
+function segmentDistance(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+  dx: number,
+  dy: number,
+): number {
+  const rx = bx - ax;
+  const ry = by - ay;
+  const sx = dx - cx;
+  const sy = dy - cy;
+  const qx = ax - cx;
+  const qy = ay - cy;
+  const rr = rx * rx + ry * ry;
+  const ss = sx * sx + sy * sy;
+  const rs = rx * sx + ry * sy;
+  const qr = qx * rx + qy * ry;
+  const qs = qx * sx + qy * sy;
+  let t = 0;
+  let u = 0;
+  const denom = rr * ss - rs * rs;
+  if (denom > 1e-8) t = Math.max(0, Math.min(1, (rs * qs - ss * qr) / denom));
+  else t = 0;
+  const uDen = ss > 1e-8 ? ss : 1;
+  u = Math.max(0, Math.min(1, (t * rs + qs) / uDen));
+  if (ss <= 1e-8) u = 0;
+  t = rr > 1e-8 ? Math.max(0, Math.min(1, (u * rs - qr) / rr)) : 0;
+  const px = ax + rx * t - (cx + sx * u);
+  const py = ay + ry * t - (cy + sy * u);
+  return Math.hypot(px, py);
+}
+
+/** How far two capsules overlap. Zero means they are clear of each other. */
+export function barsOverlapAmount(a: BarBody, t: number, b: BarBody): number {
+  const left = barSegment(a, t);
+  const right = barSegment(b, b.t);
+  const gap = a.half + b.half - segmentDistance(left.ax, left.ay, left.bx, left.by, right.ax, right.ay, right.bx, right.by);
+  return gap > 0 ? gap : 0;
+}
+
 /** How far the bar body is inside this ring. Zero means the drawn capsule is clear. */
 export function barOverlapAmount(bar: BarBody, t: number, ring: RingBody): number {
   const seg = barSegment(bar, t);
@@ -504,7 +547,11 @@ function ringStrikePoint(board: Board, ring: RingBody, sign: number): { x: numbe
       }
       if (fresh.length > 0) return nearestPatch(board, fresh);
     }
-    return null;
+    const already = fixedHits(board, ring);
+    for (const p of beforeMove) {
+      if (pointBlocked(board, ring, p.x, p.y)) already.push(p);
+    }
+    return already.length > 0 ? nearestPatch(board, already) : null;
   } finally {
     ring.theta = saved;
   }
@@ -520,18 +567,56 @@ export function strikePoint(board: Board, kind: 'ring' | 'bar', id: string, sign
   return bar ? barStrikePoint(board, bar, sign) : null;
 }
 
-/** Leading cap of a bar at the moment it enters a ring. */
+function barTouchPoint(bar: BarBody, t: number, ring: RingBody): { x: number; y: number } | null {
+  const seg = barSegment(bar, t);
+  const samples: { x: number; y: number }[] = [];
+  pushRingSamples(samples, ring);
+  let best: { x: number; y: number } | null = null;
+  let bestD = Infinity;
+  for (const p of samples) {
+    const d = distToSegment(p.x, p.y, seg.ax, seg.ay, seg.bx, seg.by);
+    if (d <= bar.half && d < bestD) {
+      bestD = d;
+      best = p;
+    }
+  }
+  if (best) return best;
+  const n = 16;
+  for (let i = 0; i <= n; i++) {
+    const u = i / n;
+    const x = seg.ax + (seg.bx - seg.ax) * u;
+    const y = seg.ay + (seg.by - seg.ay) * u;
+    if (ringHolds(ring, x, y)) return { x, y };
+  }
+  return null;
+}
+
+/** First place the capsule meets a ring while sliding this way. */
 function barStrikePoint(board: Board, bar: BarBody, sign: number): { x: number; y: number } | null {
   const saved = bar.t;
   const dir = Math.sign(sign) || 1;
+  const overlap = (t: number, ring: RingBody) => barOverlapAmount(bar, t, ring);
   try {
     for (const extra of [0.01, 0.02, 0.04, 0.08]) {
-      const next = Math.min(1, Math.max(0, saved + dir * extra));
+      const next = saved + dir * extra;
       bar.t = next;
       for (const ring of board.rings) {
-        if (leadDepth(ring, bar, next, dir) <= leadDepth(ring, bar, saved, dir) + 1e-4) continue;
+        if (overlap(next, ring) <= overlap(saved, ring) + 1e-4) continue;
+        const at = barTouchPoint(bar, next, ring);
+        if (at) return at;
+      }
+      for (const other of board.bars) {
+        if (other.id === bar.id) continue;
+        if (barsOverlapAmount(bar, next, other) <= barsOverlapAmount(bar, saved, other) + 1e-4) continue;
         const seg = barSegment(bar, next);
-        return dir >= 0 ? { x: seg.bx, y: seg.by } : { x: seg.ax, y: seg.ay };
+        const otherSeg = barSegment(other, other.t);
+        const vx = seg.bx - seg.ax;
+        const vy = seg.by - seg.ay;
+        const len2 = vx * vx + vy * vy || 1;
+        const ox = (otherSeg.ax + otherSeg.bx) / 2;
+        const oy = (otherSeg.ay + otherSeg.by) / 2;
+        const u = Math.max(0, Math.min(1, ((ox - seg.ax) * vx + (oy - seg.ay) * vy) / len2));
+        return { x: seg.ax + vx * u, y: seg.ay + vy * u };
       }
     }
     return null;

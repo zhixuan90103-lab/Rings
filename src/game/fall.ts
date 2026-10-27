@@ -15,7 +15,7 @@ export type FallBody = {
   dead: boolean;
 };
 
-const GRAVITY = -14;
+const GRAVITY = -30;
 
 export function fallFromRing(ring: RingBody): FallBody {
   return {
@@ -27,7 +27,7 @@ export function fallFromRing(ring: RingBody): FallBody {
     vy: 0.2,
     radius: ring.outer,
     theta: ring.theta,
-    spin: (Math.random() - 0.5) * 2,
+    spin: (Math.random() - 0.5) * 6,
     dead: false,
   };
 }
@@ -44,7 +44,7 @@ export function fallFromBar(bar: BarBody): FallBody {
     vy: 0.15,
     radius: Math.max(bar.half, 0.18),
     theta: Math.atan2(bar.y1 - bar.y0, bar.x1 - bar.x0),
-    spin: (Math.random() - 0.5) * 1.5,
+    spin: (Math.random() - 0.5) * 4.5,
     dead: false,
   };
 }

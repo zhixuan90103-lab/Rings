@@ -4,7 +4,7 @@ import { barById, moveBar, ringById, rotateRing, settle, beginDrag, cancelDrag, 
 import { clampAngle, freeArcs, pinForbidden } from './interval';
 import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
 import { dragEffect } from './feedback';
-import { barHitsRing, barOverlapAmount, barStillInBuckle } from './volume';
+import { barHitsRing, barOverlapAmount, barsOverlapAmount, barStillInBuckle, strikePoint } from './volume';
 import { BAR_RECOIL_WORLD, RING_RECOIL_MAX, WOBBLE_CYCLES, WOBBLE_SECONDS, beginRecoil, heldSign, releaseHold, stepRecoil, wobbleOffset } from './recoil';
 
 function assert(cond: boolean, message: string): void {
@@ -73,6 +73,7 @@ rotateRing(basic, ringById(basic, 'green')!, 0.6);
 assert(Math.abs(signedDelta(greenNested, ringById(basic, 'green')!.theta)) < 0.08, 'the nested clasp holds the green ring');
 rotateRing(basic, ringById(basic, 'green')!, -0.6);
 assert(Math.abs(signedDelta(greenNested, ringById(basic, 'green')!.theta)) < 0.08, 'the nested clasp blocks both ways');
+assert(strikePoint(basic, 'ring', 'green', 1) !== null, 'a locked ring still has a contact for the hit');
 const blue = ringById(basic, 'blue')!;
 const joint = basic.pins.find((pin) => pin.id === 'joint-green')!;
 const jointAngle = Math.atan2(joint.y - blue.y, joint.x - blue.x);
@@ -146,6 +147,40 @@ assert(red.t > 2, 'the bar keeps sliding outward with no rail end');
 red.t = tipT;
 moveBar(slide, red, -3);
 assert(red.t > -3 && barOverlapAmount(red, red.t, blueSlide) === 0, 'the far side of the ring stops the inward slide');
+const greenSlide = ringById(slide, 'green')!;
+greenSlide.theta = Math.atan2(red.y0 - greenSlide.y, red.x0 - greenSlide.x);
+const beforeGreen = red.t;
+moveBar(slide, red, beforeGreen - 1.5);
+assert(red.t > beforeGreen - 1.5, 'the green ring stops the bar');
+assert(barOverlapAmount(red, red.t, greenSlide) === 0, 'the bar stops before it sinks into the green ring');
+const blocked = beginDrag(slide, { kind: 'bar', id: red.id }, red.x0, red.y0)!;
+const discarded = dragTo(slide, blocked, red.x0 - (red.x1 - red.x0), red.y0 - (red.y1 - red.y0));
+assert(Math.abs(discarded) > 1e-3, 'pushing the bar into the green ring reports a block');
+const pair = levelBasic();
+const mover = barById(pair, 'bar-red')!;
+const ahead = mover.t - 0.75;
+const px = mover.x0 + (mover.x1 - mover.x0) * ahead;
+const py = mover.y0 + (mover.y1 - mover.y0) * ahead;
+const rdx = mover.x1 - mover.x0;
+const rdy = mover.y1 - mover.y0;
+const rlen = Math.hypot(rdx, rdy) || 1;
+pair.bars.push({
+  id: 'bar-cross',
+  kind: 'bar',
+  x0: px - (-rdy / rlen) * 0.7,
+  y0: py - (rdx / rlen) * 0.7,
+  x1: px + (-rdy / rlen) * 0.7,
+  y1: py + (rdx / rlen) * 0.7,
+  half: mover.half,
+  grip: mover.grip,
+  t: 0.5,
+});
+const cross = barById(pair, 'bar-cross')!;
+moveBar(pair, mover, mover.t - 1);
+assert(mover.t > ahead - 0.2, 'another bar stops the slide');
+assert(barsOverlapAmount(mover, mover.t, cross) < 1e-3, 'the bar stops before the capsules sink together');
+assert(strikePoint(pair, 'bar', mover.id, -1) !== null, 'a bar against a bar has a contact');
+greenSlide.theta = ringById(levelBasic(), 'green')!.theta;
 red.t = 0.92;
 const greenHeld = ringById(slide, 'green')!.theta;
 rotateRing(slide, ringById(slide, 'green')!, 1.4);

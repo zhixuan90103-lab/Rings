@@ -16,7 +16,7 @@ import {
   type CircInterval,
   type LinInterval,
 } from './interval';
-import { barHitsRing, barOverlapAmount, barStillInBuckle, connectorHitsRing, leadDepth, ringVolumeHit } from './volume';
+import { barHitsRing, barOverlapAmount, barsOverlapAmount, barStillInBuckle, connectorHitsRing, ringVolumeHit } from './volume';
 
 export type RingBody = {
   id: string;
@@ -238,13 +238,23 @@ export function moveBar(board: Board, bar: BarBody, target: number): void {
   const sign = Math.sign(target - bar.t);
   if (sign === 0) return;
   let left = Math.abs(target - bar.t);
+  const overlap = (t: number) => {
+    let sum = 0;
+    for (const ring of board.rings) sum += barOverlapAmount(bar, t, ring);
+    for (const other of board.bars) {
+      if (other.id !== bar.id) sum += barsOverlapAmount(bar, t, other);
+    }
+    return sum;
+  };
   while (left > 1e-4) {
     const step = Math.min(0.008, left);
     const previous = bar.t;
-    const before = board.rings.map((ring) => leadDepth(ring, bar, previous, sign));
+    const before = overlap(previous);
     bar.t = previous + sign * step;
-    const now = board.rings.map((ring) => leadDepth(ring, bar, bar.t, sign));
-    if (now.some((depth, i) => depth > before[i] + 1e-4)) {
+    const now = overlap(bar.t);
+    const entered = before <= 1e-4 && now > 1e-4;
+    const deeper = before > 1e-4 && now > before + 1e-4;
+    if (entered || deeper) {
       bar.t = previous;
       return;
     }

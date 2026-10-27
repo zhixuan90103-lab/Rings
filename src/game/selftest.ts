@@ -1,4 +1,4 @@
-import { boardBounds, cameraForFit, cameraForPinch, choosePinchLock, clampCamera, designNdc, frameFor, worldFromDesign, zoomCap } from './camera';
+import { beginTwoFinger, boardBounds, cameraForFit, cameraForPinch, choosePinchLock, clampCamera, designNdc, frameFor, stepTwoFinger, worldFromDesign, zoomCap } from './camera';
 import { connectorReach } from './parts';
 import { gapCovers, signedDelta } from './angle';
 import { barById, moveBar, ringById, rotateRing, settle, beginDrag, cancelDrag, dragTo, ringFreeArcs } from './board';
@@ -370,6 +370,12 @@ assert(choosePinchLock(8, 20, null) === 'zoom', 'a wider pinch locks to zoom');
 assert(choosePinchLock(30, 20, 'zoom') === 'zoom', 'a locked zoom ignores a later pan');
 assert(choosePinchLock(30, 10, null) === 'pan', 'a sliding pair locks to pan');
 assert(choosePinchLock(4, 40, 'pan') === 'pan', 'a locked pan ignores a later pinch');
+const gesture = beginTwoFinger(0, 0, 1, 180, 400, 100);
+const waiting = stepTwoFinger(gesture, 184, 400, 100, 0, 0, 1, box, fit);
+assert(waiting.camera === null, 'a two-finger gesture waits until it locks');
+const open = { ...fit, maxZoom: fit.minZoom * 3 };
+const zoomedGesture = stepTwoFinger({ ...gesture, lock: 'zoom' }, 200, 430, 140, 0, 0, 1, box, open);
+assert(zoomedGesture.camera !== null && zoomedGesture.camera.zoom > 1, 'a locked zoom changes zoom around the fingers');
 assert(zoomCap(0.648, 0.4, 0.648, 1) === 1, 'a smaller level can zoom until its ring matches level 1');
 assert(zoomCap(0.648, 1.2, 0.648, 1) === 1.2, 'a level already larger than level 1 does not zoom in');
 const tight = clampCamera(cam.x + 5, cam.y + 5, fit.minZoom, box, fit);

@@ -166,6 +166,61 @@ export function choosePinchLock(
   return distShift >= midShift ? 'zoom' : 'pan';
 }
 
+export type TwoFinger = {
+  zoom: number;
+  dist: number;
+  x: number;
+  y: number;
+  midX: number;
+  midY: number;
+  lock: PinchLock | null;
+};
+
+export function beginTwoFinger(
+  camX: number,
+  camY: number,
+  zoom: number,
+  midX: number,
+  midY: number,
+  dist: number,
+): TwoFinger {
+  return { zoom, dist, x: camX, y: camY, midX, midY, lock: null };
+}
+
+/**
+ * One two-finger gesture locks to zoom or pan, then stays on that.
+ * Zoom keeps the point under the current midpoint.
+ * Pan keeps the point that was under the midpoint when the lock began.
+ * Returns null until the lock distance is passed. Clamp does not change zoom.
+ */
+export function stepTwoFinger(
+  gesture: TwoFinger,
+  midX: number,
+  midY: number,
+  dist: number,
+  camX: number,
+  camY: number,
+  camZoom: number,
+  bounds: Aabb,
+  frame: Frame,
+): { gesture: TwoFinger; camera: { x: number; y: number; zoom: number } | null } {
+  const midShift = Math.hypot(midX - gesture.midX, midY - gesture.midY);
+  const distShift = Math.abs(dist - gesture.dist);
+  const wasLocked = gesture.lock;
+  const lock = choosePinchLock(midShift, distShift, gesture.lock);
+  if (!lock || dist < 1e-3) return { gesture: { ...gesture, lock }, camera: null };
+  const base: TwoFinger = wasLocked
+    ? gesture
+    : { ...gesture, lock, x: camX, y: camY, zoom: camZoom, dist, midX, midY };
+  const zooming = lock === 'zoom';
+  const zoom = zooming
+    ? Math.min(frame.maxZoom, Math.max(frame.minZoom, base.zoom * (dist / base.dist)))
+    : base.zoom;
+  const anchor = zooming ? { x: camX, y: camY, zoom: camZoom, midX, midY } : base;
+  const shifted = cameraForPinch(anchor, midX, midY, zoom);
+  return { gesture: { ...base, lock }, camera: clampCamera(shifted.x, shifted.y, zoom, bounds, frame) };
+}
+
 /** Puts the world point that was under the first midpoint under the current midpoint. */
 export function cameraForPinch(
   start: { x: number; y: number; zoom: number; midX: number; midY: number },

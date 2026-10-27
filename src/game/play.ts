@@ -33,12 +33,12 @@ import { strikePoint } from './volume';
 import {
   boardBounds,
   cameraForFit,
-  cameraForPinch,
-  choosePinchLock,
+  beginTwoFinger,
   clampCamera,
   largestRing,
+  stepTwoFinger,
   zoomCap,
-  type PinchLock,
+  type TwoFinger,
   FRAME_MARGIN,
   frameFor,
   viewSize,
@@ -133,15 +133,7 @@ export function mountPlay(options: {
   let dragMoved = false;
   let pointerId: number | null = null;
   const fingers = new Map<number, { dx: number; dy: number }>();
-  let pinch: {
-    zoom: number;
-    dist: number;
-    x: number;
-    y: number;
-    midX: number;
-    midY: number;
-    lock: PinchLock | null;
-  } | null = null;
+  let pinch: TwoFinger | null = null;
   let hold = false;
   let fitted = true;
   let awaitingNext = false;
@@ -396,35 +388,23 @@ export function mountPlay(options: {
   function beginPinch(): void {
     const pts = [...fingers.values()];
     if (pts.length !== 2) return;
-    pinch = {
-      zoom: camera.zoom,
-      dist: Math.hypot(pts[0].dx - pts[1].dx, pts[0].dy - pts[1].dy),
-      x: camera.position.x,
-      y: camera.position.y,
-      midX: (pts[0].dx + pts[1].dx) / 2,
-      midY: (pts[0].dy + pts[1].dy) / 2,
-      lock: null,
-    };
+    const midX = (pts[0].dx + pts[1].dx) / 2;
+    const midY = (pts[0].dy + pts[1].dy) / 2;
+    const dist = Math.hypot(pts[0].dx - pts[1].dx, pts[0].dy - pts[1].dy);
+    pinch = beginTwoFinger(camera.position.x, camera.position.y, camera.zoom, midX, midY, dist);
   }
 
   function applyPinch(): void {
     if (!pinch) return;
     const pts = [...fingers.values()];
-    if (pts.length !== 2 || pinch.dist < 1e-3) return;
+    if (pts.length !== 2) return;
     const dist = Math.hypot(pts[0].dx - pts[1].dx, pts[0].dy - pts[1].dy);
     const midX = (pts[0].dx + pts[1].dx) / 2;
     const midY = (pts[0].dy + pts[1].dy) / 2;
-    const midShift = Math.hypot(midX - pinch.midX, midY - pinch.midY);
-    const distShift = Math.abs(dist - pinch.dist);
-    pinch.lock = choosePinchLock(midShift, distShift, pinch.lock);
-    if (!pinch.lock) return;
-    const zooming = pinch.lock === 'zoom';
-    const zoom = zooming
-      ? Math.min(limits.maxZoom, Math.max(limits.minZoom, pinch.zoom * (dist / pinch.dist)))
-      : pinch.zoom;
-    const shifted = cameraForPinch(pinch, zooming ? pinch.midX : midX, zooming ? pinch.midY : midY, zoom);
-    const next = clampCamera(shifted.x, shifted.y, zoom, bounds, limits);
-    applyCamera(next.x, next.y, next.zoom);
+    const step = stepTwoFinger(pinch, midX, midY, dist, camera.position.x, camera.position.y, camera.zoom, bounds, limits);
+    pinch = step.gesture;
+    if (!step.camera) return;
+    applyCamera(step.camera.x, step.camera.y, step.camera.zoom);
     fitted = false;
   }
 

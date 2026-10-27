@@ -339,7 +339,10 @@ export function mountPlay(options: {
   function showImpact(kind: 'ring' | 'bar', id: string, sign: number): void {
     const view = views.find((item) => item.id === id && !item.falling);
     if (!view) return;
-    feedback.impact(view.mesh, strikePoint(board, kind, id, sign), colorOf(id));
+    const ring = ringById(board, id);
+    const bar = barById(board, id);
+    const color = ring?.color ?? bar?.color ?? colorOf(id);
+    feedback.impact(view.mesh, strikePoint(board, kind, id, sign), color);
   }
 
   function worldFromEvent(event: PointerEvent, clampToDesign: boolean): { x: number; y: number } | null {

@@ -173,7 +173,7 @@
 | `src/game/camera.ts` | 取景、缩放上限、双指锁定、边界夹紧 |
 | `src/game/play.ts` | 正交画面、点选、指针捕获、合并采样、过关计时。银卡扣试玩时不可拖 |
 | `src/game/feedback.ts` | 无效晃动和撞击发亮、粒子。不写回规则姿态 |
-| `src/game/sparks.ts` | 9 颗同色圆片。不透明，只缩小，然后下落 |
+| `src/game/sparks.ts` | 9 颗圆片，颜色用正在拖的那一件自己的 `color`。不透明，只缩小，然后下落 |
 | `src/game/recoil.ts` | 晃动曲线。圆环 3°，长条 3 设计像素，3 次衰减 |
 | `src/game/parts.ts` | 圆环、竖杆、横柄、胶囊棍、银卡扣，以及两种组合。尺寸函数不含网格 |
 | `src/game/selftest.ts` | 区间、抬手、孔内拖动，以及原型的拆解顺序 |

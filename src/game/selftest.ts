@@ -4,7 +4,7 @@ import { barById, moveBar, ringById, rotateRing, settle, beginDrag, cancelDrag, 
 import { clampAngle, freeArcs, pinForbidden } from './interval';
 import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
 import { dragEffect } from './feedback';
-import { barOverlapAmount, barStillInBuckle } from './volume';
+import { barHitsRing, barOverlapAmount, barStillInBuckle } from './volume';
 import { BAR_RECOIL_WORLD, RING_RECOIL_MAX, WOBBLE_CYCLES, WOBBLE_SECONDS, beginRecoil, heldSign, releaseHold, stepRecoil, wobbleOffset } from './recoil';
 
 function assert(cond: boolean, message: string): void {
@@ -242,5 +242,30 @@ assert(heldSign(null, -0.4) === -1, 'the first block sets the hold direction');
 assert(heldSign(-1, 0.8) === -1, 'a later drag cannot flip the held direction');
 assert(light.settled, 'the wobble ends on the rule pose');
 assert(BAR_RECOIL_WORLD > 0.03 && BAR_RECOIL_WORLD < 0.045, 'bar wobble is about three design pixels');
+
+const capRing = {
+  id: 'cap',
+  kind: 'ring' as const,
+  x: 0,
+  y: 0,
+  inner: 0.4,
+  outer: 0.6,
+  gap: 1,
+  theta: 0,
+};
+const capAngle = capRing.gap / 2;
+const capMid = (capRing.inner + capRing.outer) / 2;
+const probe = (radius: number) => {
+  const x = Math.cos(capAngle) * radius;
+  const y = Math.sin(capAngle) * radius;
+  return barHitsRing(
+    { id: 'probe', kind: 'bar', x0: x, y0: y, x1: x, y1: y, half: 0.004, grip: 0.004, t: 0.5 },
+    0.5,
+    capRing,
+  );
+};
+assert(probe(capMid), 'the gap cap center is solid');
+assert(probe(capRing.outer - 0.01), 'the drawn cap still reaches the outer edge');
+assert(!probe(capRing.outer + 0.02), 'the gap cap does not extend past the band');
 
 console.log('rotate-rings selftest ok');

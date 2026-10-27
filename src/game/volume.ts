@@ -9,11 +9,13 @@ import type { BarBody, Board, RingBody } from './board';
 import { gapCovers, signedDelta, wrapAngle } from './angle';
 import { PART } from './parts';
 
-/** Horn radius of the drawn ring, including the bevel that grows back out to the band. */
+/**
+ * Radius of the drawn gap cap.
+ * The mesh insets both edges by band/4, then the extrude bevel grows that
+ * outline back out, so the cap is a semicircle of radius band/2.
+ */
 function hornRadius(ring: RingBody): number {
-  const band = ring.outer - ring.inner;
-  const bevel = band * 0.25;
-  return (band - bevel) / 2 + bevel;
+  return (ring.outer - ring.inner) / 2;
 }
 
 function ringSector(ring: RingBody, x: number, y: number): boolean {

@@ -1,0 +1,207 @@
+import type { Board } from './board';
+import { syncPins } from './board';
+
+function ring(
+  id: string,
+  x: number,
+  y: number,
+  gap: number,
+  theta: number,
+): Board['rings'][number] {
+  return { id, kind: 'ring', x, y, inner: 0.42, outer: 0.68, gap, theta };
+}
+
+export function levelPin(): Board {
+  const board: Board = {
+    rings: [ring('a', 0, 0.4, 1.1, 0)],
+    bars: [],
+    pins: [
+      {
+        id: 'pin-a',
+        ownerId: null,
+        localAngle: 0,
+        localRadius: 0,
+        x: 0.55,
+        y: 0.4,
+        role: 'block',
+        limitRingId: null,
+        stopHalf: 0,
+      },
+    ],
+    latches: [],
+  };
+  syncPins(board);
+  return board;
+}
+
+export function levelTwo(): Board {
+  const a = ring('a', -0.55, 0.45, 1.15, 0);
+  const b = ring('b', 0.55, 0.45, 1.15, Math.PI);
+  const board: Board = {
+    rings: [a, b],
+    bars: [],
+    pins: [
+      {
+        id: 'pin-from-a',
+        ownerId: 'a',
+        localAngle: 0,
+        localRadius: 0.55,
+        x: 0,
+        y: 0,
+        role: 'block',
+        limitRingId: null,
+        stopHalf: 0,
+      },
+      {
+        id: 'pin-from-b',
+        ownerId: 'b',
+        localAngle: 0,
+        localRadius: 0.65,
+        x: 0,
+        y: 0,
+        role: 'block',
+        limitRingId: null,
+        stopHalf: 0,
+      },
+    ],
+    latches: [],
+  };
+  syncPins(board);
+  return board;
+}
+
+export function levelBar(): Board {
+  const board: Board = {
+    rings: [ring('a', 0, 0.85, 1.2, 0.1)],
+    bars: [
+      {
+        id: 'bar',
+        kind: 'bar',
+        x0: -1.35,
+        y0: -0.35,
+        x1: 1.35,
+        y1: -0.35,
+        half: 0.12,
+        grip: 0.48,
+        t: 0.15,
+      },
+    ],
+    pins: [
+      {
+        id: 'pin-a',
+        ownerId: null,
+        localAngle: 0,
+        localRadius: 0,
+        x: Math.cos(0) * 0.55,
+        y: 0.85 + Math.sin(0) * 0.55,
+        role: 'block',
+        limitRingId: null,
+        stopHalf: 0,
+      },
+    ],
+    latches: [
+      {
+        id: 'latch',
+        ringId: 'a',
+        barId: 'bar',
+        x: Math.cos(0.2) * 0.55,
+        y: 0.85 + Math.sin(0.2) * 0.55,
+        t0: 0.72,
+        t1: 1,
+      },
+    ],
+  };
+  syncPins(board);
+  return board;
+}
+
+export function levelStopClosed(): Board {
+  const open = ring('open', -0.15, 0.7, 1.05, 0);
+  const closed = ring('closed', 0.62, 0.2, 0, 0);
+  const board: Board = {
+    rings: [open, closed],
+    bars: [],
+    pins: [
+      {
+        id: 'world',
+        ownerId: null,
+        localAngle: 0,
+        localRadius: 0,
+        x: open.x + 0.55,
+        y: open.y,
+        role: 'block',
+        limitRingId: null,
+        stopHalf: 0,
+      },
+      {
+        id: 'stop',
+        ownerId: null,
+        localAngle: 0,
+        localRadius: 0,
+        x: open.x + Math.cos(0.55) * 0.55,
+        y: open.y + Math.sin(0.55) * 0.55,
+        role: 'stop',
+        limitRingId: 'open',
+        stopHalf: 0.28,
+      },
+      {
+        id: 'holds-closed',
+        ownerId: 'open',
+        localAngle: -1.15,
+        localRadius: 0.55,
+        x: 0,
+        y: 0,
+        role: 'block',
+        limitRingId: null,
+        stopHalf: 0,
+      },
+    ],
+    latches: [],
+  };
+  syncPins(board);
+  return board;
+}
+
+/**
+ * One chain, top to bottom.
+ * Each bar is held by the ring it crosses. Turn that ring until the
+ * opening faces the bar, then slide the bar out. The ring below stays
+ * shut until the piece above has left.
+ */
+export function levelScreen(): Board {
+  const blue = ring('blue', 0.1, 1.15, 1.55, 0);
+  const green = ring('green', -1.15, 0.53, 1.55, 0);
+  const orange = ring('orange', 0.85, -0.71, 1.55, 0);
+  for (const item of [blue, green, orange]) {
+    item.inner = 0.3;
+    item.outer = 0.72;
+  }
+  const board: Board = {
+    rings: [blue, green, orange],
+    bars: [
+      { id: 'bar-red', kind: 'bar', x0: -1.2, y0: 1.77, x1: 1.6, y1: 1.77, half: 0.14, grip: 0.85, t: 0.33 },
+      { id: 'bar-orange', kind: 'bar', x0: -2.35, y0: 1.15, x1: 1.7, y1: 1.15, half: 0.14, grip: 0.85, t: 0.2 },
+      { id: 'bar-purple', kind: 'bar', x0: -2.35, y0: -0.09, x1: 1.85, y1: -0.09, half: 0.14, grip: 0.85, t: 0.2 },
+    ],
+    pins: [
+      { id: 'pin-red', ownerId: 'bar-red', localAngle: 0, localRadius: 0, x: 0.1, y: 1.77, role: 'stop', limitRingId: null, stopHalf: 0 },
+      { id: 'pin-orange', ownerId: 'bar-orange', localAngle: 0, localRadius: 0, x: -1.15, y: 1.15, role: 'stop', limitRingId: null, stopHalf: 0 },
+      { id: 'pin-purple', ownerId: 'bar-purple', localAngle: 0, localRadius: 0, x: -1.12, y: -0.09, role: 'stop', limitRingId: null, stopHalf: 0 },
+    ],
+    latches: [
+      { id: 'latch-blue', ringId: 'blue', barId: 'bar-red', x: blue.x, y: blue.y, t0: 0.78, t1: 1 },
+      { id: 'latch-green', ringId: 'green', barId: 'bar-orange', x: green.x, y: green.y, t0: 0.78, t1: 1 },
+      { id: 'latch-orange', ringId: 'orange', barId: 'bar-purple', x: orange.x, y: orange.y, t0: 0.78, t1: 1 },
+    ],
+  };
+  syncPins(board);
+  return board;
+}
+
+export const LEVELS: { name: string; make: () => Board }[] = [
+  { name: '从上往下拆', make: levelScreen },
+  { name: '开口环 + 阻挡销', make: levelPin },
+  { name: '双环互扣', make: levelTwo },
+  { name: '滑杆 + 卡扣', make: levelBar },
+  { name: '限位销 + 闭合环', make: levelStopClosed },
+];

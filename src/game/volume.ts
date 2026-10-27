@@ -6,8 +6,15 @@
  */
 
 import type { BarBody, Board, RingBody } from './board';
-import { gapCovers } from './angle';
+import { gapCovers, signedDelta } from './angle';
 import { PART } from './parts';
+
+/** Horn radius of the drawn ring, including the bevel that grows back out to the band. */
+function hornRadius(ring: RingBody): number {
+  const band = ring.outer - ring.inner;
+  const bevel = band * 0.25;
+  return (band - bevel) / 2 + bevel;
+}
 
 function ringSector(ring: RingBody, x: number, y: number): boolean {
   const d = Math.hypot(x - ring.x, y - ring.y);
@@ -32,19 +39,15 @@ function connectorBox(ring: RingBody): { x: number; y: number; angle: number; le
   const b = band();
   const stemLen = b * 2.5 * (2 / 3) * SCALE;
   const stemW = b * 0.88 * SCALE;
-  const claspLen = b * 2.1 * (5 / 6) * SCALE;
-  const claspW = b * 1.4 * SCALE;
-  const stemDist = (PART.outer + (b * 2.5 * (2 / 3)) * 0.5 - b * 0.2) * SCALE;
-  const claspDist = stemDist + stemLen * 0.5;
+  const stemDist = (PART.outer + stemLen * 0.5 - b * 0.2) * SCALE;
   const world = ring.theta + local;
   const boxes = [
     { dist: stemDist, angle: world, length: stemLen, width: stemW },
-    { dist: claspDist, angle: world, length: claspLen, width: claspW, spin: Math.PI / 2 },
   ];
   return boxes.map((box) => ({
     x: ring.x + Math.cos(world) * box.dist,
     y: ring.y + Math.sin(world) * box.dist,
-    angle: world + (box.spin ?? 0),
+    angle: world,
     length: box.length,
     width: box.width,
   }));
@@ -63,14 +66,14 @@ function pushRingSamples(out: { x: number; y: number }[], ring: RingBody): void 
     }
   }
   const mid = (ring.inner + ring.outer) / 2;
-  const cap = (ring.outer - ring.inner) / 2;
+  const cap = hornRadius(ring);
   for (const sign of [-1, 1]) {
     const a = ring.theta + sign * ring.gap / 2;
     const cx = ring.x + Math.cos(a) * mid;
     const cy = ring.y + Math.sin(a) * mid;
-    for (let i = 0; i < 8; i++) {
-      const t = (i / 8) * Math.PI * 2;
-      out.push({ x: cx + Math.cos(t) * (cap * 0.7), y: cy + Math.sin(t) * (cap * 0.7) });
+    for (let i = 0; i < 10; i++) {
+      const t = (i / 10) * Math.PI * 2;
+      out.push({ x: cx + Math.cos(t) * (cap * 0.92), y: cy + Math.sin(t) * (cap * 0.92) });
     }
   }
   for (const box of connectorBox(ring)) {
@@ -100,14 +103,16 @@ function inBox(box: { x: number; y: number; angle: number; length: number; width
 function ringHolds(ring: RingBody, x: number, y: number): boolean {
   if (ringSector(ring, x, y)) return true;
   const mid = (ring.inner + ring.outer) / 2;
-  const cap = (ring.outer - ring.inner) / 2;
+  const cap = hornRadius(ring);
   for (const sign of [-1, 1]) {
     const a = ring.theta + sign * ring.gap / 2;
     const dx = x - (ring.x + Math.cos(a) * mid);
     const dy = y - (ring.y + Math.sin(a) * mid);
     if (dx * dx + dy * dy <= cap * cap) return true;
   }
-  return connectorBox(ring).some((box) => inBox(box, x, y));
+  if (connectorBox(ring).some((box) => inBox(box, x, y))) return true;
+  const arc = claspArc(ring);
+  return arc ? inClasp(arc, x, y) : false;
 }
 
 function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
@@ -119,7 +124,7 @@ function distToSegment(px: number, py: number, ax: number, ay: number, bx: numbe
   return Math.hypot(px - (ax + abx * t), py - (ay + aby * t));
 }
 
-export function barSegment(bar: BarBody, t: number): { ax: number; ay: number; bx: number; by: number } {
+function barFrame(bar: BarBody, t: number): { x: number; y: number; ux: number; uy: number; nx: number; ny: number } {
   const x = bar.x0 + (bar.x1 - bar.x0) * t;
   const y = bar.y0 + (bar.y1 - bar.y0) * t;
   const dx = bar.x1 - bar.x0;
@@ -127,8 +132,41 @@ export function barSegment(bar: BarBody, t: number): { ax: number; ay: number; b
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len;
   const uy = dy / len;
+  return { x, y, ux, uy, nx: -uy, ny: ux };
+}
+
+/** Stadium matching the drawn capsule: round ends of radius `half`, overall length `2 * grip`. */
+export function barSegment(bar: BarBody, t: number): { ax: number; ay: number; bx: number; by: number } {
+  const frame = barFrame(bar, t);
   const grip = bar.grip > 0 ? bar.grip : 0.45;
-  return { ax: x - ux * grip, ay: y - uy * grip, bx: x + ux * grip, by: y + uy * grip };
+  const core = Math.max(0, grip - bar.half);
+  return {
+    ax: frame.x - frame.ux * core,
+    ay: frame.y - frame.uy * core,
+    bx: frame.x + frame.ux * core,
+    by: frame.y + frame.uy * core,
+  };
+}
+
+/** Silver sleeve and the two grips. The bar slides through this shape, so it is not a hit against its own bar. */
+function buckleHolds(bar: BarBody, x: number, y: number, px: number, py: number): boolean {
+  const frame = barFrame(bar, bar.t);
+  const width = bar.half * 2;
+  const basis = PART.outer * 2 * SCALE;
+  const sleeveLen = basis * 0.32 * (2 / 3);
+  const sleeveW = width * 1.3;
+  const gripSpan = sleeveLen * 0.62 * 0.7;
+  const gripStick = width * 0.48 * 0.7;
+  const dx = x - px;
+  const dy = y - py;
+  const lx = dx * frame.ux + dy * frame.uy;
+  const ly = dx * frame.nx + dy * frame.ny;
+  if (Math.abs(lx) <= sleeveLen / 2 && Math.abs(ly) <= sleeveW / 2) return true;
+  for (const side of [-1, 1]) {
+    const gy = side * (sleeveW / 2 + gripStick / 2);
+    if (Math.abs(lx) <= gripSpan / 2 && Math.abs(ly - gy) <= gripStick / 2) return true;
+  }
+  return false;
 }
 
 /** Stem or handle lies in the other ring's gap, so that ring cannot swing off it. */
@@ -162,6 +200,26 @@ export function barOccupiesGap(bar: BarBody, t: number, ring: RingBody): boolean
   return false;
 }
 
+/** How far the bar body is inside this ring. Zero means the drawn capsule is clear. */
+export function barOverlapAmount(bar: BarBody, t: number, ring: RingBody): number {
+  const seg = barSegment(bar, t);
+  const samples: { x: number; y: number }[] = [];
+  pushRingSamples(samples, ring);
+  let amount = 0;
+  for (const p of samples) {
+    const gap = bar.half - distToSegment(p.x, p.y, seg.ax, seg.ay, seg.bx, seg.by);
+    if (gap > 0) amount += gap;
+  }
+  const n = 16;
+  for (let i = 0; i <= n; i++) {
+    const u = i / n;
+    const x = seg.ax + (seg.bx - seg.ax) * u;
+    const y = seg.ay + (seg.by - seg.ay) * u;
+    if (ringHolds(ring, x, y)) amount += bar.half;
+  }
+  return amount;
+}
+
 export function barHitsRing(bar: BarBody, t: number, ring: RingBody): boolean {
   const seg = barSegment(bar, t);
   const samples: { x: number; y: number }[] = [];
@@ -193,29 +251,88 @@ function connectorSamples(ring: RingBody): { x: number; y: number }[] {
       }
     }
   }
+  const arc = claspArc(ring);
+  if (arc) {
+    for (let i = 0; i <= 8; i++) {
+      const a = arc.mid - arc.half + (2 * arc.half * i) / 8;
+      for (const k of [-0.4, 0, 0.4]) {
+        const radius = arc.radius + arc.width * k;
+        out.push({ x: arc.cx + Math.cos(a) * radius, y: arc.cy + Math.sin(a) * radius });
+      }
+    }
+  }
   return out;
 }
 
-/** Stem and handle against the other ring. The two bands do not restrain each other. */
+function claspArc(ring: RingBody): { cx: number; cy: number; radius: number; half: number; width: number; mid: number } | null {
+  const local = connectorLocalAngle(ring);
+  if (local === null) return null;
+  const b = band();
+  const stemLen = b * 2.5 * (2 / 3) * SCALE;
+  const stemDist = (PART.outer + stemLen * 0.5 - b * 0.2) * SCALE;
+  const claspDist = stemDist + stemLen * 0.5;
+  const bend = (PART.outer - b / 2) * SCALE;
+  const world = ring.theta + local;
+  const ox = ring.x + Math.cos(world) * claspDist;
+  const oy = ring.y + Math.sin(world) * claspDist;
+  return {
+    cx: ox + Math.cos(world) * bend,
+    cy: oy + Math.sin(world) * bend,
+    radius: bend,
+    half: (b * 2.1 * (5 / 6) * SCALE) / 2 / bend,
+    width: b * 1.4 * SCALE,
+    mid: Math.atan2(-Math.sin(world), -Math.cos(world)),
+  };
+}
+
+function inClasp(arc: { cx: number; cy: number; radius: number; half: number; width: number; mid: number }, x: number, y: number): boolean {
+  const d = Math.hypot(x - arc.cx, y - arc.cy);
+  if (d < arc.radius - arc.width / 2 || d > arc.radius + arc.width / 2) return false;
+  return Math.abs(signedDelta(arc.mid, Math.atan2(y - arc.cy, x - arc.cx))) <= arc.half;
+}
+
+/** Stem and bent handle against the other ring. */
 export function connectorHitsRing(owner: RingBody, other: RingBody): boolean {
   if (connectorLocalAngle(owner) === null) return false;
+  const arc = claspArc(owner);
   for (const p of connectorSamples(owner)) {
-    if (ringSector(other, p.x, p.y)) return true;
-    const mid = (other.inner + other.outer) / 2;
-    const cap = (other.outer - other.inner) / 2;
-    for (const sign of [-1, 1]) {
-      const a = other.theta + sign * other.gap / 2;
-      const dx = p.x - (other.x + Math.cos(a) * mid);
-      const dy = p.y - (other.y + Math.sin(a) * mid);
-      if (dx * dx + dy * dy <= cap * cap) return true;
-    }
+    if (ringHolds(other, p.x, p.y)) return true;
   }
+  if (!arc) return false;
   const bandSamples: { x: number; y: number }[] = [];
   pushRingSamples(bandSamples, other);
-  for (const box of connectorBox(owner)) {
-    for (const p of bandSamples) if (inBox(box, p.x, p.y)) return true;
+  return bandSamples.some((p) => inClasp(arc, p.x, p.y) || connectorBox(owner).some((box) => inBox(box, p.x, p.y)));
+}
+
+function buckleHitsRing(bar: BarBody, ring: RingBody, px: number, py: number): boolean {
+  const frame = barFrame(bar, bar.t);
+  const width = bar.half * 2;
+  const basis = PART.outer * 2 * SCALE;
+  const sleeveLen = basis * 0.32 * (2 / 3);
+  const sleeveW = width * 1.3;
+  const gripSpan = sleeveLen * 0.62 * 0.7;
+  const gripStick = width * 0.48 * 0.7;
+  const sample = (lx: number, ly: number) => {
+    const x = px + frame.ux * lx + frame.nx * ly;
+    const y = py + frame.uy * lx + frame.ny * ly;
+    return ringHolds(ring, x, y);
+  };
+  for (let ix = 0; ix <= 4; ix++) {
+    for (let iy = 0; iy <= 2; iy++) {
+      if (sample(-sleeveLen / 2 + (sleeveLen * ix) / 4, -sleeveW / 2 + (sleeveW * iy) / 2)) return true;
+    }
   }
-  return false;
+  for (const side of [-1, 1]) {
+    const gy = side * (sleeveW / 2 + gripStick / 2);
+    for (let ix = 0; ix <= 3; ix++) {
+      for (let iy = 0; iy <= 2; iy++) {
+        if (sample(-gripSpan / 2 + (gripSpan * ix) / 3, gy - gripStick / 2 + (gripStick * iy) / 2)) return true;
+      }
+    }
+  }
+  const samples: { x: number; y: number }[] = [];
+  pushRingSamples(samples, ring);
+  return samples.some((p) => buckleHolds(bar, p.x, p.y, px, py));
 }
 
 export function ringsOverlap(a: RingBody, b: RingBody): boolean {
@@ -244,9 +361,12 @@ export function poseOverlaps(board: Board): boolean {
 export function ringVolumeHit(board: Board, ring: RingBody): boolean {
   for (const bar of board.bars) {
     if (barHitsRing(bar, bar.t, ring)) return true;
+    const buckle = board.pins.find((pin) => pin.ownerId === bar.id && pin.role === 'stop' && pin.stopHalf === 0);
+    if (buckle && buckleHitsRing(bar, ring, buckle.x, buckle.y)) return true;
   }
   for (const other of board.rings) {
-    if (other.id !== ring.id && connectorHitsRing(ring, other)) return true;
+    if (other.id === ring.id) continue;
+    if (connectorHitsRing(ring, other)) return true;
   }
   return false;
 }

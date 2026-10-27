@@ -16,7 +16,7 @@ import {
   type CircInterval,
   type LinInterval,
 } from './interval';
-import { barHitsRing, ringVolumeHit } from './volume';
+import { barHitsRing, barOverlapAmount, barSegment, connectorHitsRing, ringVolumeHit } from './volume';
 
 export type RingBody = {
   id: string;
@@ -44,22 +44,27 @@ export type BarBody = {
 
 export type Pin = {
   id: string;
-  /** Ring that carries this pin. Null is a fixed world pin. */
+  /**
+   * Who wears this pin.
+   * A ring id owns a clasp (`catch`) or a one-way block.
+   * A bar id owns only the silver mark on that bar.
+   * Null is a world pin and keeps whichever ring it sits in.
+   */
   ownerId: string | null;
   localAngle: number;
   localRadius: number;
   x: number;
   y: number;
-  /** `catch` keeps the ring until pointerup, and does not stop the turn. */
+  /** `catch` is a ring's clasp. It keeps both rings and does not stop the caught ring's turn. */
   role: 'block' | 'stop' | 'catch';
   /** Stop pins hard-limit this ring and do not retain it. */
   limitRingId: string | null;
   stopHalf: number;
 };
 
+/** Silver buckle. It belongs to one bar and keeps that bar only. */
 export type Latch = {
   id: string;
-  ringId: string;
   barId: string;
   x: number;
   y: number;
@@ -78,7 +83,7 @@ export type Board = {
 
 export type Drag =
   | { kind: 'ring'; id: string; theta: number; pointerAngle: number }
-  | { kind: 'bar'; id: string; t: number };
+  | { kind: 'bar'; id: string; t: number; pointerT?: number };
 
 export function ringById(board: Board, id: string): RingBody | undefined {
   return board.rings.find((r) => r.id === id);
@@ -124,11 +129,6 @@ function blockingPoints(board: Board, ring: RingBody): { x: number; y: number; h
       points.push({ x: pin.x, y: pin.y, hard: true, half: pin.stopHalf });
     }
   }
-  for (const latch of board.latches) {
-    if (latch.ringId === ring.id && inBand(ring, latch.x, latch.y)) {
-      points.push({ x: latch.x, y: latch.y, hard: false, half: 0 });
-    }
-  }
   return points;
 }
 
@@ -163,9 +163,43 @@ export function ringFreeArcs(board: Board, ring: RingBody): CircInterval[] {
   return freeArcs(forbidden);
 }
 
+function barDepth(board: Board, ring: RingBody): number {
+  let depth = 0;
+  for (const bar of board.bars) depth += barOverlapAmount(bar, bar.t, ring);
+  return depth;
+}
+
+function claspLocks(board: Board, ring: RingBody): boolean {
+  return board.rings.some((other) => other.id !== ring.id && connectorHitsRing(ring, other));
+}
+
 export function rotateRing(board: Board, ring: RingBody, delta: number): void {
-  ring.theta = clampAngle(ring.theta, delta, ringFreeArcs(board, ring));
-  syncPins(board);
+  if (!board.volumes) {
+    ring.theta = clampAngle(ring.theta, delta, ringFreeArcs(board, ring));
+    syncPins(board);
+    return;
+  }
+  const sign = Math.sign(delta);
+  if (sign === 0) return;
+  let left = Math.abs(delta);
+  while (left > 1e-4) {
+    const step = Math.min(0.012, left);
+    const previous = ring.theta;
+    const depthBefore = barDepth(board, ring);
+    const claspBefore = claspLocks(board, ring);
+    ring.theta = wrapAngle(ring.theta + sign * step);
+    syncPins(board);
+    const depthNow = barDepth(board, ring);
+    const enteredBar = depthBefore <= 1e-4 && depthNow > 1e-4;
+    const deeperBar = depthBefore > 1e-4 && depthNow > depthBefore + 1e-4;
+    const claspNow = claspLocks(board, ring);
+    if (claspBefore || (claspNow && !claspBefore) || enteredBar || deeperBar) {
+      ring.theta = previous;
+      syncPins(board);
+      return;
+    }
+    left -= step;
+  }
 }
 
 function barPoint(bar: BarBody, t: number): { x: number; y: number } {
@@ -195,9 +229,49 @@ export function barBlocked(board: Board, bar: BarBody): LinInterval[] {
   return blocked;
 }
 
+function leadPoint(bar: BarBody, t: number, sign: number): { x: number; y: number } {
+  const seg = barSegment(bar, t);
+  return sign >= 0 ? { x: seg.bx, y: seg.by } : { x: seg.ax, y: seg.ay };
+}
+
+/** How far this point sits inside the ring solid. Zero means it is clear. */
+function pointDepth(ring: RingBody, x: number, y: number): number {
+  if (!ringSolidContains(ring, x, y)) return 0;
+  const d = Math.hypot(x - ring.x, y - ring.y);
+  return Math.max(ring.inner - d, d - ring.outer, 0.001);
+}
+
+function leadDepth(ring: RingBody, bar: BarBody, t: number, sign: number): number {
+  const lead = leadPoint(bar, t, sign);
+  let depth = pointDepth(ring, lead.x, lead.y);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    depth = Math.max(depth, pointDepth(ring, lead.x + Math.cos(a) * bar.half, lead.y + Math.sin(a) * bar.half));
+  }
+  return depth;
+}
+
 export function moveBar(board: Board, bar: BarBody, target: number): void {
-  const free = freeLinear(barBlocked(board, bar), 0, 1);
-  bar.t = clampLinear(bar.t, target, free);
+  if (!board.volumes) {
+    const free = freeLinear(barBlocked(board, bar), 0, 1);
+    bar.t = clampLinear(bar.t, target, free);
+    return;
+  }
+  const sign = Math.sign(target - bar.t);
+  if (sign === 0) return;
+  let left = Math.abs(target - bar.t);
+  while (left > 1e-4) {
+    const step = Math.min(0.008, left);
+    const previous = bar.t;
+    const before = board.rings.map((ring) => leadDepth(ring, bar, previous, sign));
+    bar.t = previous + sign * step;
+    const now = board.rings.map((ring) => leadDepth(ring, bar, bar.t, sign));
+    if (now.some((depth, i) => depth > before[i] + 1e-4)) {
+      bar.t = previous;
+      return;
+    }
+    left -= step;
+  }
 }
 
 export function projectBar(bar: BarBody, x: number, y: number): number {
@@ -208,15 +282,31 @@ export function projectBar(bar: BarBody, x: number, y: number): number {
   return ((x - bar.x0) * dx + (y - bar.y0) * dy) / len2;
 }
 
+function catchReach(ring: RingBody): number {
+  return ring.outer + (ring.outer - ring.inner) * 0.85;
+}
+
+function pinHolds(ring: RingBody, pin: { role: string; x: number; y: number }): boolean {
+  const d = Math.hypot(pin.x - ring.x, pin.y - ring.y);
+  if (pin.role === 'catch') return d <= catchReach(ring) && d >= ring.inner * 0.4;
+  return inBand(ring, pin.x, pin.y);
+}
+
 function retainers(board: Board, id: string): number {
   const ring = ringById(board, id);
   if (ring) {
     let n = 0;
     for (const pin of board.pins) {
-      if ((pin.role === 'block' || pin.role === 'catch') && pin.ownerId !== ring.id && inBand(ring, pin.x, pin.y)) n += 1;
-    }
-    for (const latch of board.latches) {
-      if (latch.ringId === ring.id) n += 1;
+      if (pin.role !== 'block' && pin.role !== 'catch') continue;
+      if (!pin.ownerId) {
+        if (pinHolds(ring, pin)) n += 1;
+        continue;
+      }
+      if (pin.ownerId === ring.id) {
+        if (pin.role === 'catch' && board.rings.some((other) => other.id !== ring.id && pinHolds(other, pin))) n += 1;
+        continue;
+      }
+      if (ringById(board, pin.ownerId) && pinHolds(ring, pin)) n += 1;
     }
     return n;
   }
@@ -230,7 +320,7 @@ export function settle(board: Board, drag: Drag): string[] {
     if (!ring) return [];
     board.pins = board.pins.filter((pin) => {
       if ((pin.role !== 'block' && pin.role !== 'catch') || pin.ownerId === ring.id) return true;
-      if (!inBand(ring, pin.x, pin.y)) return true;
+      if (!pinHolds(ring, pin)) return true;
       const alpha = Math.atan2(pin.y - ring.y, pin.x - ring.x);
       return !gapCovers(ring.theta, alpha, ring.gap);
     });
@@ -258,7 +348,7 @@ function cascade(board: Board): string[] {
       board.rings = board.rings.filter((r) => r.id !== id);
       board.bars = board.bars.filter((b) => b.id !== id);
       board.pins = board.pins.filter((p) => p.ownerId !== id && p.limitRingId !== id);
-      board.latches = board.latches.filter((l) => l.ringId !== id && l.barId !== id);
+      board.latches = board.latches.filter((l) => l.barId !== id);
       changed = true;
       break;
     }
@@ -306,7 +396,7 @@ export function beginDrag(board: Board, hit: { kind: 'ring'; id: string } | { ki
   }
   const bar = barById(board, hit.id);
   if (!bar) return null;
-  return { kind: 'bar', id: bar.id, t: bar.t };
+  return { kind: 'bar', id: bar.id, t: bar.t, pointerT: projectBar(bar, x, y) };
 }
 
 export function dragTo(board: Board, drag: Drag, x: number, y: number): void {
@@ -321,7 +411,7 @@ export function dragTo(board: Board, drag: Drag, x: number, y: number): void {
   }
   const bar = barById(board, drag.id);
   if (!bar) return;
-  moveBar(board, bar, projectBar(bar, x, y));
+  moveBar(board, bar, drag.t + (projectBar(bar, x, y) - (drag.pointerT ?? drag.t)));
 }
 
 export function cancelDrag(board: Board, drag: Drag): void {

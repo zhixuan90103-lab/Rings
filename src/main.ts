@@ -81,14 +81,6 @@ async function boot(): Promise<void> {
   key.shadow.radius = 6;
   key.position.set(-0.55, 0.9, 12);
 
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(20, 30),
-    new THREE.MeshStandardMaterial({ color: 0xfbf0e0, roughness: 1, metalness: 0 }),
-  );
-  ground.receiveShadow = true;
-  ground.position.z = -0.45;
-  scene.add(ground);
-
   let latestLayout: StageLayout | null = null;
   const play = mountPlay({
     renderer,

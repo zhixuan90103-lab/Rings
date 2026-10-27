@@ -105,12 +105,6 @@ export function mountPlay(options: {
   scene.add(root);
 
   const groundY = -viewSize().h / 2 + 0.35;
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(viewSize().w + 2, 0.7),
-    new THREE.MeshStandardMaterial({ color: 0xf6ead8, roughness: 1 }),
-  );
-  ground.position.set(0, groundY - 0.35, -0.2);
-  scene.add(ground);
 
   let board: Board = LEVELS[0].make();
   let levelIndex = 0;
@@ -385,9 +379,6 @@ export function mountPlay(options: {
       options.renderer.setAnimationLoop(null);
       clearViews();
       scene.remove(root);
-      scene.remove(ground);
-      ground.geometry.dispose();
-      (ground.material as THREE.Material).dispose();
     },
   };
 }

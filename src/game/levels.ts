@@ -1,6 +1,22 @@
 import type { Board } from './board';
 import { syncPins } from './board';
 
+function holdPin(id: string, host: Board['rings'][number]): Board['pins'][number] {
+  const angle = host.theta + Math.PI;
+  const radius = (host.inner + host.outer) / 2;
+  return {
+    id,
+    ownerId: null,
+    localAngle: 0,
+    localRadius: 0,
+    x: host.x + Math.cos(angle) * radius,
+    y: host.y + Math.sin(angle) * radius,
+    role: 'catch',
+    limitRingId: null,
+    stopHalf: 0,
+  };
+}
+
 function ring(
   id: string,
   x: number,
@@ -102,7 +118,6 @@ export function levelBar(): Board {
     latches: [
       {
         id: 'latch',
-        ringId: 'a',
         barId: 'bar',
         x: Math.cos(0.2) * 0.55,
         y: 0.85 + Math.sin(0.2) * 0.55,
@@ -165,7 +180,7 @@ export function levelStopClosed(): Board {
 /**
  * Blue and green are nested through each other's gaps, on one plane,
  * without overlapping. The green ring cannot turn. The red bar sits
- * diagonally in the green gap and slides along that diagonal.
+ * diagonally in the blue gap and slides along that diagonal.
  */
 export function levelBasic(): Board {
   const scale = 0.9;
@@ -199,18 +214,18 @@ export function levelBasic(): Board {
     item.outer = outer;
   }
   const grip = 0.72 * scale * 1.5;
-  const gx = Math.cos(greenTheta);
-  const gy = Math.sin(greenTheta);
-  const tip = 0.16;
-  const cx = green.x + gx * (tip + grip);
-  const cy = green.y + gy * (tip + grip);
-  const inward = 0.75;
-  const outward = 1.15;
+  const gx = Math.cos(blue.theta);
+  const gy = Math.sin(blue.theta);
+  // Round cap sits in the gap mouth. The shaft stays outside the hole.
+  const mouth = (inner + outer) / 2;
+  const cx = blue.x + gx * (mouth + grip);
+  const cy = blue.y + gy * (mouth + grip);
+  const span = 1.9;
   const t = 0.2;
-  const x0 = cx - gx * inward;
-  const y0 = cy - gy * inward;
-  const x1 = cx + gx * outward;
-  const y1 = cy + gy * outward;
+  const x0 = cx - gx * (t * span);
+  const y0 = cy - gy * (t * span);
+  const x1 = cx + gx * ((1 - t) * span);
+  const y1 = cy + gy * ((1 - t) * span);
   const board: Board = {
     rings: [blue, green],
     bars: [
@@ -251,7 +266,7 @@ export function levelBasic(): Board {
       },
     ],
     latches: [
-      { id: 'latch-green', ringId: 'green', barId: 'bar-red', x: green.x, y: green.y, t0: 0.7, t1: 1 },
+      { id: 'buckle-red', barId: 'bar-red', x: 0, y: 0, t0: 0.7, t1: 1e6 },
     ],
     volumes: true,
   };
@@ -284,11 +299,14 @@ export function levelScreen(): Board {
       { id: 'pin-red', ownerId: 'bar-red', localAngle: 0, localRadius: 0, x: 0.1, y: 1.77, role: 'stop', limitRingId: null, stopHalf: 0 },
       { id: 'pin-orange', ownerId: 'bar-orange', localAngle: 0, localRadius: 0, x: -1.15, y: 1.15, role: 'stop', limitRingId: null, stopHalf: 0 },
       { id: 'pin-purple', ownerId: 'bar-purple', localAngle: 0, localRadius: 0, x: -1.12, y: -0.09, role: 'stop', limitRingId: null, stopHalf: 0 },
+      holdPin('hold-blue', blue),
+      holdPin('hold-green', green),
+      holdPin('hold-orange', orange),
     ],
     latches: [
-      { id: 'latch-blue', ringId: 'blue', barId: 'bar-red', x: blue.x, y: blue.y, t0: 0.78, t1: 1 },
-      { id: 'latch-green', ringId: 'green', barId: 'bar-orange', x: green.x, y: green.y, t0: 0.78, t1: 1 },
-      { id: 'latch-orange', ringId: 'orange', barId: 'bar-purple', x: orange.x, y: orange.y, t0: 0.78, t1: 1 },
+      { id: 'buckle-red', barId: 'bar-red', x: 0.1, y: 1.77, t0: 0.78, t1: 1 },
+      { id: 'buckle-orange', barId: 'bar-orange', x: -1.15, y: 1.15, t0: 0.78, t1: 1 },
+      { id: 'buckle-purple', barId: 'bar-purple', x: -1.12, y: -0.09, t0: 0.78, t1: 1 },
     ],
   };
   syncPins(board);

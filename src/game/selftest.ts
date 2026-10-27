@@ -8,6 +8,7 @@ import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, l
 import { dragEffect } from './feedback';
 import { barHitsRing, barOverlapAmount, barsOverlapAmount, barStillInBuckle, buckleOverlapAmount, connectorHitsRing, strikePoint } from './volume';
 import { BAR_RECOIL_WORLD, RING_RECOIL_MAX, WOBBLE_CYCLES, WOBBLE_SECONDS, beginRecoil, heldSign, releaseHold, stepRecoil, wobbleOffset } from './recoil';
+import { ringChipPoints } from './shatter';
 
 function assert(cond: boolean, message: string): void {
   if (!cond) throw new Error(message);
@@ -348,6 +349,28 @@ const topLeft = designNdc(0, 0);
 assert(topLeft.x === -1 && topLeft.y === 1, 'design top-left is world-up NDC');
 const stemReach = connectorReach(0.648, 0.648 * 0.28, 0.36244);
 assert(stemReach > 0.648, 'a connector reaches past the ring');
+const chips = ringChipPoints({
+  id: 'chip',
+  kind: 'ring',
+  x: 1,
+  y: -2,
+  inner: 0.47,
+  outer: 0.648,
+  gap: 1.75,
+  theta: 0,
+  connectors: [],
+});
+assert(chips.length > 8 && chips.length < 28, 'a ring shatters into a short row of chips');
+assert(
+  chips.every((point) => {
+    const x = point.x - 1;
+    const y = point.y + 2;
+    const radius = Math.hypot(x, y);
+    const angle = Math.abs(Math.atan2(y, x));
+    return radius <= 0.648 + 0.02 && (angle >= 1.75 / 2 - 0.05 || radius >= 0.47);
+  }),
+  'ring chips stay on the band and out of the gap',
+);
 const box = boardBounds(LEVELS[0].make());
 assert(box.maxX > box.minX && box.maxY > box.minY, 'a level has a bounds box');
 const usable = { left: 24, top: 80, right: 366, bottom: 760 };

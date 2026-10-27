@@ -25,7 +25,7 @@ import {
   type Drag,
 } from './board';
 import { signedDelta } from './angle';
-import { FALL_Z, fallFromBar, fallFromRing, fallFromRivet, stepFalls, type FallBody } from './fall';
+import { disposeShatter, releaseBar, releaseBuckle, releaseRing, stepShatters, type Shatter } from './shatter';
 import { LEVELS } from './levels';
 import level1 from '../../public/levels/1.json';
 import { dragEffect, mountFeedback } from './feedback';
@@ -128,7 +128,7 @@ export function mountPlay(options: {
   let editing = false;
   let views: PieceView[] = [];
   let markers: THREE.Object3D[] = [];
-  let rivets: { mesh: THREE.Object3D; body: FallBody }[] = [];
+  let shatters: Shatter[] = [];
   let drag: Drag | null = null;
   let dragMoved = false;
   let pointerId: number | null = null;
@@ -142,7 +142,7 @@ export function mountPlay(options: {
   let limits: Frame = frameFor(bounds, { left: FRAME_MARGIN, top: FRAME_MARGIN, right: DESIGN_WIDTH - FRAME_MARGIN, bottom: DESIGN_HEIGHT - FRAME_MARGIN });
   let chromeKey = '';
   const feedback = mountFeedback(root);
-  let falls: FallBody[] = [];
+
   let last = performance.now();
 
   const raycaster = new THREE.Raycaster();
@@ -261,12 +261,8 @@ export function mountPlay(options: {
     }
     views = [];
     markers = [];
-    falls = [];
-    for (const rivet of rivets) {
-      disposeObject(rivet.mesh);
-      root.remove(rivet.mesh);
-    }
-    rivets = [];
+    for (const shatter of shatters) disposeShatter(shatter);
+    shatters = [];
   }
 
   function addMarker(mesh: THREE.Object3D, x: number, y: number, pinId?: string): void {
@@ -527,18 +523,21 @@ export function mountPlay(options: {
         const view = views.find((item) => item.id === id);
         if (!view) continue;
         view.falling = true;
-        stopBoardShadow(view.mesh);
-        if (ring) falls.push(fallFromRing(ring));
-        else if (bar) {
-          falls.push(fallFromBar(bar));
+        view.mesh.visible = false;
+        if (ring) {
+          const chips = releaseRing(root, ring, ring.color ?? colorOf(ring.id));
+          if (chips) shatters.push(chips);
+        } else if (bar) {
+          const chips = releaseBar(root, bar, bar.color ?? colorOf(bar.id));
+          if (chips) shatters.push(chips);
           const rivet = markers.find((marker) => marker.userData.barId === id);
           if (rivet) {
-            markers = markers.filter((marker) => marker !== rivet);
-            stopBoardShadow(rivet);
-            rivets.push({
-              mesh: rivet,
-              body: fallFromRivet(id, rivet.position.x, rivet.position.y, rivet.rotation.z),
+            const metal = releaseBuckle(root, bar.half * 2, {
+              x: rivet.position.x,
+              y: rivet.position.y,
+              angle: rivet.rotation.z,
             });
+            if (metal) shatters.push(metal);
           }
         }
       }
@@ -559,15 +558,6 @@ export function mountPlay(options: {
       feedback.click(clicked.id, clicked.kind, length);
     } else feedback.clearPose();
     syncMeshes();
-  }
-
-  /** Falling pieces stay in front. Their shadow stayed on the board plane and landed on locked parts. */
-  function stopBoardShadow(rootMesh: THREE.Object3D): void {
-    rootMesh.traverse((obj) => {
-      if (!(obj instanceof THREE.Mesh)) return;
-      obj.castShadow = false;
-      if (obj.userData.fakeShadow) obj.visible = false;
-    });
   }
 
   function showLevel(): void {
@@ -669,13 +659,12 @@ export function mountPlay(options: {
   function frame(now: number): void {
     const dt = Math.min(0.033, (now - last) / 1000);
     last = now;
-    stepFalls(falls, -viewSize().h / 2, dt);
-    stepFalls(rivets.map((rivet) => rivet.body), -viewSize().h / 2, dt);
-    for (const rivet of rivets) {
-      rivet.mesh.position.set(rivet.body.x, rivet.body.y, FALL_Z);
-      rivet.mesh.rotation.z = rivet.body.theta;
-      if (rivet.body.dead) rivet.mesh.visible = false;
-    }
+    stepShatters(shatters, -viewSize().h / 2, dt);
+    shatters = shatters.filter((shatter) => {
+      if (!shatter.dead) return true;
+      disposeShatter(shatter);
+      return false;
+    });
     feedback.step(dt);
     const stamp = chromeStamp();
     if (stamp !== chromeKey) {
@@ -683,13 +672,6 @@ export function mountPlay(options: {
       refreshLimits(fitted);
     }
     if (drag || feedback.busy()) syncMeshes();
-    for (const body of falls) {
-      const view = views.find((item) => item.id === body.id);
-      if (!view) continue;
-      view.mesh.position.set(body.x, body.y, FALL_Z);
-      view.mesh.rotation.z = body.theta;
-      if (body.dead) view.mesh.visible = false;
-    }
     if (awaitingNext && !editing) {
       clearLeft += dt;
       if (clearLeft >= 1) {

@@ -6,7 +6,7 @@
  */
 
 import type { BarBody, Board, RingBody } from './board';
-import { gapCovers, signedDelta } from './angle';
+import { gapCovers, signedDelta, wrapAngle } from './angle';
 import { PART } from './parts';
 
 /** Horn radius of the drawn ring, including the bevel that grows back out to the band. */
@@ -406,4 +406,100 @@ export function ringVolumeHit(board: Board, ring: RingBody): boolean {
     if (connectorHitsRing(ring, other)) return true;
   }
   return false;
+}
+
+function pointBlocked(board: Board, ring: RingBody, x: number, y: number): boolean {
+  for (const other of board.rings) {
+    if (other.id !== ring.id && ringHolds(other, x, y)) return true;
+  }
+  for (const bar of board.bars) {
+    const seg = barSegment(bar, bar.t);
+    if (distToSegment(x, y, seg.ax, seg.ay, seg.bx, seg.by) <= bar.half) return true;
+  }
+  return false;
+}
+
+function fixedHits(board: Board, ring: RingBody): { x: number; y: number }[] {
+  const hits: { x: number; y: number }[] = [];
+  for (const other of board.rings) {
+    if (other.id === ring.id) continue;
+    for (const p of connectorSamples(other)) {
+      if (ringHolds(ring, p.x, p.y)) hits.push(p);
+    }
+  }
+  for (const bar of board.bars) {
+    const seg = barSegment(bar, bar.t);
+    for (let i = 0; i <= 24; i++) {
+      const u = i / 24;
+      const x = seg.ax + (seg.bx - seg.ax) * u;
+      const y = seg.ay + (seg.by - seg.ay) * u;
+      if (ringHolds(ring, x, y)) hits.push({ x, y });
+    }
+  }
+  return hits;
+}
+
+function ringBodySamples(ring: RingBody): { x: number; y: number }[] {
+  const samples: { x: number; y: number }[] = [];
+  pushRingSamples(samples, ring);
+  return samples;
+}
+
+function centroid(points: { x: number; y: number }[]): { x: number; y: number } {
+  let x = 0;
+  let y = 0;
+  for (const p of points) {
+    x += p.x;
+    y += p.y;
+  }
+  return { x: x / points.length, y: y / points.length };
+}
+
+/** First new contact along the push. A long probe would average in later overlaps. */
+export function ringStrikePoint(board: Board, ring: RingBody, sign: number): { x: number; y: number } | null {
+  const saved = ring.theta;
+  const dir = Math.sign(sign) || 1;
+  const beforeMove = ringBodySamples(ring);
+  const beforeFixed = fixedHits(board, ring);
+  const seen = new Set(beforeFixed.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`));
+  try {
+    for (const extra of [0.012, 0.024, 0.04]) {
+      ring.theta = wrapAngle(saved + dir * extra);
+      const afterMove = ringBodySamples(ring);
+      const fresh: { x: number; y: number }[] = [];
+      for (let i = 0; i < afterMove.length; i++) {
+        const next = afterMove[i];
+        const prev = beforeMove[i];
+        if (!prev) continue;
+        if (pointBlocked(board, ring, next.x, next.y) && !pointBlocked(board, ring, prev.x, prev.y)) fresh.push(next);
+      }
+      for (const p of fixedHits(board, ring)) {
+        if (!seen.has(`${p.x.toFixed(3)},${p.y.toFixed(3)}`)) fresh.push(p);
+      }
+      if (fresh.length > 0) return centroid(fresh);
+    }
+    return null;
+  } finally {
+    ring.theta = saved;
+  }
+}
+
+/** Leading cap of a bar at the moment it enters a ring. */
+export function barStrikePoint(board: Board, bar: BarBody, sign: number): { x: number; y: number } | null {
+  const saved = bar.t;
+  const dir = Math.sign(sign) || 1;
+  try {
+    for (const extra of [0.01, 0.02, 0.04, 0.08]) {
+      const next = Math.min(1, Math.max(0, saved + dir * extra));
+      bar.t = next;
+      for (const ring of board.rings) {
+        if (leadDepth(ring, bar, next, dir) <= leadDepth(ring, bar, saved, dir) + 1e-4) continue;
+        const seg = barSegment(bar, next);
+        return dir >= 0 ? { x: seg.bx, y: seg.by } : { x: seg.ax, y: seg.ay };
+      }
+    }
+    return null;
+  } finally {
+    bar.t = saved;
+  }
 }

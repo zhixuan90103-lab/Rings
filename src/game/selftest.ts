@@ -4,6 +4,7 @@ import { barById, moveBar, ringById, rotateRing, settle, beginDrag, cancelDrag, 
 import { clampAngle, freeArcs, pinForbidden } from './interval';
 import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
 import { barOverlapAmount, barStillInBuckle } from './volume';
+import { BAR_RECOIL_WORLD, RING_RECOIL_MAX, WOBBLE_CYCLES, WOBBLE_SECONDS, beginRecoil, heldSign, releaseHold, stepRecoil, wobbleOffset } from './recoil';
 
 function assert(cond: boolean, message: string): void {
   if (!cond) throw new Error(message);
@@ -185,5 +186,50 @@ assert(fellGreen.includes('green') && !fellGreen.includes('orange'), 'the green 
 assert(reach('bar-purple') < 0.78, 'purple bar is still stopped by the orange ring');
 rotateRing(chain, ringById(chain, 'orange')!, Math.PI / 2);
 assert(reach('bar-purple') >= 0.78, 'turning the orange ring opens the last bar');
+
+const held = levelBasic();
+const heldGreen = ringById(held, 'green')!;
+const heldTheta = heldGreen.theta;
+const heldDrag = beginDrag(held, { kind: 'ring', id: 'green' }, heldGreen.x + heldGreen.outer, heldGreen.y);
+assert(heldDrag !== null, 'held drag');
+const rejected = dragTo(held, heldDrag!, heldGreen.x + heldGreen.outer, heldGreen.y + 0.45);
+assert(Math.abs(signedDelta(heldTheta, heldGreen.theta)) < 1e-4, 'recoil does not change the rule angle');
+assert(Math.abs(rejected) > 1e-3, 'a blocked drag reports the discarded step');
+
+function peaksOf(rejectedStep: number, max: number): { pos: number; neg: number; settled: boolean } {
+  const body = beginRecoil(rejectedStep, max);
+  assert(body !== null, 'recoil starts');
+  let pos = 0;
+  let neg = 0;
+  let settled = false;
+  for (let i = 0; i < 80; i++) {
+    pos = Math.max(pos, wobbleOffset(body!));
+    neg = Math.min(neg, wobbleOffset(body!));
+    settled = stepRecoil(body!, 0.008);
+  }
+  return { pos, neg, settled };
+}
+
+const light = peaksOf(0.01, RING_RECOIL_MAX);
+const hard = peaksOf(0.4, RING_RECOIL_MAX);
+assert(Math.abs(light.pos - hard.pos) < 1e-6, 'wobble amplitude ignores drag speed');
+assert(Math.abs(light.neg - hard.neg) < 1e-6, 'the return peak ignores drag speed');
+const period = WOBBLE_SECONDS / WOBBLE_CYCLES;
+const crest = wobbleOffset({ sign: 1, max: RING_RECOIL_MAX, elapsed: period / 4, hold: false });
+const second = wobbleOffset({ sign: 1, max: RING_RECOIL_MAX, elapsed: period + period / 4, hold: false });
+const third = wobbleOffset({ sign: 1, max: RING_RECOIL_MAX, elapsed: 2 * period + period / 4, hold: false });
+assert(Math.abs(crest - RING_RECOIL_MAX) < 1e-6, 'the first peak uses the full amplitude');
+assert(second < crest * 0.75, 'the second peak is smaller');
+assert(third < second * 0.75, 'the third peak is smaller again');
+assert(WOBBLE_CYCLES === 3, 'the wobble repeats three times');
+const heldRing = beginRecoil(0.2, RING_RECOIL_MAX, true);
+assert(heldRing !== null && wobbleOffset(heldRing!) === RING_RECOIL_MAX, 'a held ring stays at three degrees');
+assert(!stepRecoil(heldRing!, 0.2), 'holding does not finish the wobble');
+releaseHold(heldRing!);
+assert(Math.abs(wobbleOffset(heldRing!) - RING_RECOIL_MAX) < 1e-6, 'release starts from the held angle');
+assert(heldSign(null, -0.4) === -1, 'the first block sets the hold direction');
+assert(heldSign(-1, 0.8) === -1, 'a later drag cannot flip the held direction');
+assert(light.settled, 'the wobble ends on the rule pose');
+assert(BAR_RECOIL_WORLD > 0.03 && BAR_RECOIL_WORLD < 0.045, 'bar wobble is about three design pixels');
 
 console.log('rotate-rings selftest ok');

@@ -382,31 +382,39 @@ function tangentialStep(cx: number, cy: number, x0: number, y0: number, x1: numb
   return (rx * (y1 - y0) - ry * (x1 - x0)) / lever2;
 }
 
-export function dragTo(board: Board, drag: Drag, x: number, y: number): void {
+/** Moves the piece. Returns the signed step collision did not apply. */
+export function dragTo(board: Board, drag: Drag, x: number, y: number): number {
   if (drag.kind === 'ring') {
     const ring = ringById(board, drag.id);
-    if (!ring) return;
+    if (!ring) return 0;
+    const before = ring.theta;
     const lever = (ring.inner + ring.outer) / 2;
     const span = Math.hypot(x - drag.x, y - drag.y);
     const steps = Math.max(1, Math.ceil(span / Math.max(lever, 1e-4)));
     let x0 = drag.x;
     let y0 = drag.y;
+    let requested = 0;
     for (let i = 1; i <= steps; i++) {
       const x1 = drag.x + ((x - drag.x) * i) / steps;
       const y1 = drag.y + ((y - drag.y) * i) / steps;
-      rotateRing(board, ring, tangentialStep(ring.x, ring.y, x0, y0, x1, y1, lever));
+      const delta = tangentialStep(ring.x, ring.y, x0, y0, x1, y1, lever);
+      requested += delta;
+      rotateRing(board, ring, delta);
       x0 = x1;
       y0 = y1;
     }
     drag.x = x;
     drag.y = y;
-    return;
+    return requested - signedDelta(before, ring.theta);
   }
   const bar = barById(board, drag.id);
-  if (!bar) return;
-  moveBar(board, bar, bar.t + (projectBar(bar, x, y) - projectBar(bar, drag.x, drag.y)));
+  if (!bar) return 0;
+  const before = bar.t;
+  const requested = projectBar(bar, x, y) - projectBar(bar, drag.x, drag.y);
+  moveBar(board, bar, before + requested);
   drag.x = x;
   drag.y = y;
+  return before + requested - bar.t;
 }
 
 export function cancelDrag(board: Board, drag: Drag): void {

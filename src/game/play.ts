@@ -25,7 +25,7 @@ import {
   type Drag,
 } from './board';
 import { signedDelta } from './angle';
-import { fallFromBar, fallFromRing, fallFromRivet, stepFalls, type FallBody } from './fall';
+import { FALL_Z, fallFromBar, fallFromRing, fallFromRivet, stepFalls, type FallBody } from './fall';
 import { LEVELS } from './levels';
 import level1 from '../../public/levels/1.json';
 import { dragEffect, mountFeedback } from './feedback';
@@ -524,12 +524,14 @@ export function mountPlay(options: {
         const view = views.find((item) => item.id === id);
         if (!view) continue;
         view.falling = true;
+        stopBoardShadow(view.mesh);
         if (ring) falls.push(fallFromRing(ring));
         else if (bar) {
           falls.push(fallFromBar(bar));
           const rivet = markers.find((marker) => marker.userData.barId === id);
           if (rivet) {
             markers = markers.filter((marker) => marker !== rivet);
+            stopBoardShadow(rivet);
             rivets.push({
               mesh: rivet,
               body: fallFromRivet(id, rivet.position.x, rivet.position.y, rivet.rotation.z),
@@ -554,6 +556,15 @@ export function mountPlay(options: {
       feedback.click(clicked.id, clicked.kind, length);
     } else feedback.clearPose();
     syncMeshes();
+  }
+
+  /** Falling pieces stay in front. Their shadow stayed on the board plane and landed on locked parts. */
+  function stopBoardShadow(rootMesh: THREE.Object3D): void {
+    rootMesh.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      obj.castShadow = false;
+      if (obj.userData.fakeShadow) obj.visible = false;
+    });
   }
 
   function showLevel(): void {
@@ -655,16 +666,10 @@ export function mountPlay(options: {
   function frame(now: number): void {
     const dt = Math.min(0.033, (now - last) / 1000);
     last = now;
-    const obstacles = board.rings.map((ring) => ({ x: ring.x, y: ring.y, radius: ring.outer }));
-    for (const bar of board.bars) {
-      const x = bar.x0 + (bar.x1 - bar.x0) * bar.t;
-      const y = bar.y0 + (bar.y1 - bar.y0) * bar.t;
-      obstacles.push({ x, y, radius: bar.half + 0.12 });
-    }
-    stepFalls(falls, obstacles, -viewSize().h / 2, dt);
-    stepFalls(rivets.map((rivet) => rivet.body), obstacles, -viewSize().h / 2, dt);
+    stepFalls(falls, -viewSize().h / 2, dt);
+    stepFalls(rivets.map((rivet) => rivet.body), -viewSize().h / 2, dt);
     for (const rivet of rivets) {
-      rivet.mesh.position.set(rivet.body.x, rivet.body.y, 0.2);
+      rivet.mesh.position.set(rivet.body.x, rivet.body.y, FALL_Z);
       rivet.mesh.rotation.z = rivet.body.theta;
       if (rivet.body.dead) rivet.mesh.visible = false;
     }
@@ -678,7 +683,7 @@ export function mountPlay(options: {
     for (const body of falls) {
       const view = views.find((item) => item.id === body.id);
       if (!view) continue;
-      view.mesh.position.set(body.x, body.y, 0.1);
+      view.mesh.position.set(body.x, body.y, FALL_Z);
       view.mesh.rotation.z = body.theta;
       if (body.dead) view.mesh.visible = false;
     }

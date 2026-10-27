@@ -65,36 +65,16 @@ export function fallFromBar(bar: BarBody): FallBody {
   };
 }
 
-export function stepFalls(
-  bodies: FallBody[],
-  obstacles: { x: number; y: number; radius: number }[],
-  viewBottom: number,
-  dt: number,
-): void {
+/** In front of locked rings (z 0) and bars (z 0.2). Falling pieces do not rest on them. */
+export const FALL_Z = 0.85;
+
+export function stepFalls(bodies: FallBody[], viewBottom: number, dt: number): void {
   for (const body of bodies) {
     if (body.dead) continue;
     body.vy += GRAVITY * dt;
     body.x += body.vx * dt;
     body.y += body.vy * dt;
     body.theta += body.spin * dt;
-
-    for (const obstacle of obstacles) {
-      const dx = body.x - obstacle.x;
-      const dy = body.y - obstacle.y;
-      const min = body.radius + obstacle.radius;
-      const d = Math.hypot(dx, dy);
-      if (d >= min || d < 1e-6) continue;
-      const nx = dx / d;
-      const ny = dy / d;
-      body.x = obstacle.x + nx * min;
-      body.y = obstacle.y + ny * min;
-      const vn = body.vx * nx + body.vy * ny;
-      if (vn < 0) {
-        body.vx -= vn * nx;
-        body.vy -= vn * ny;
-      }
-    }
-
     if (body.y + body.radius < viewBottom) body.dead = true;
   }
 }

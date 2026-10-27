@@ -11,6 +11,7 @@
 | [docs/AUDIO.md](./docs/AUDIO.md) | 音效方案（预解码 + 每帧一批 + 原生池） |
 | [docs/HAPTICS.md](./docs/HAPTICS.md) | 震动如何一次接对（插件注册 + 玩法层） |
 | [docs/ROTATE-RINGS.md](./docs/ROTATE-RINGS.md) | Rotate Rings 方法规范（区间约束、画面对应、拆解顺序、解开后掉落） |
+| [docs/PARTS.md](./docs/PARTS.md) | 当前画面的基础件：哪些单独造，哪些可以组合 |
 | [docs/ROTATE-RINGS-SOURCES.md](./docs/ROTATE-RINGS-SOURCES.md) | 上述规范的有效来源 |
 
 ## 30 秒上手
@@ -22,7 +23,7 @@ npm run dev
 # → http://127.0.0.1:5190/
 ```
 
-应看到：桌面手机框、从上往下拆的圆环和滑杆、右上角 **手机/Pad** 切换。震动按钮在页面里，默认不挡住棋盘。桌面无原生马达，属正常。
+应看到：桌面手机框、右上角 **手机/Pad** 切换，以及三件基础造型：蓝环、带一套衔接的绿环、中段有银卡扣的红胶囊棍。关卡规则在代码里，当前画面不画关卡。桌面无原生马达，属正常。
 
 ## 合并了什么
 

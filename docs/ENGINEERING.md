@@ -1,10 +1,10 @@
 # Engineering — portrait-webgpu-base
 
-配套：[AGENTS.md](../AGENTS.md) · [ENTRYPOINTS.md](./ENTRYPOINTS.md) · [MERGE.md](./MERGE.md) · [AUDIO.md](./AUDIO.md) · [HAPTICS.md](./HAPTICS.md) · [ROTATE-RINGS.md](./ROTATE-RINGS.md) · [ROTATE-RINGS-SOURCES.md](./ROTATE-RINGS-SOURCES.md)
+配套：[AGENTS.md](../AGENTS.md) · [ENTRYPOINTS.md](./ENTRYPOINTS.md) · [MERGE.md](./MERGE.md) · [AUDIO.md](./AUDIO.md) · [HAPTICS.md](./HAPTICS.md) · [ROTATE-RINGS.md](./ROTATE-RINGS.md) · [PARTS.md](./PARTS.md) · [ROTATE-RINGS-SOURCES.md](./ROTATE-RINGS-SOURCES.md)
 
 ## 1. 定位
 
-可复制的 **竖屏 WebGPU 手游底座**：能 dev、能 build、能真机、能震动、桌面≈手机/Pad。不含具体玩法（demo 可删）。
+可复制的 **竖屏 WebGPU 手游底座**：能 dev、能 build、能真机、能震动、桌面≈手机/Pad。当前画面是 [PARTS.md](./PARTS.md) 的零件表。关卡规则在代码里，画面先不画关卡。
 
 ## 2. 目录
 
@@ -17,7 +17,8 @@ portrait-webgpu-base/
 ├── vite.config.ts          # base: './' · port 5190
 ├── capacitor.config.ts     # contentInset never · scrollEnabled false
 ├── src/
-│   ├── main.ts             # demo（可替换）
+│   ├── main.ts             # 舞台、灯光、阴影
+│   ├── game/               # parts.ts 零件；play.ts 摆放；规则见 ROTATE-RINGS.md
 │   ├── create-renderer.ts
 │   ├── style.css
 │   ├── adapt/

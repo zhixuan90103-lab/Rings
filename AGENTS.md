@@ -24,6 +24,8 @@
 | 构建 | `vite.config.ts`（**`base: './'`**） |
 | iOS 注入 | `scripts/bootstrap-ios.mjs` |
 | 音效方案（未实现） | `docs/AUDIO.md` |
+| 画面零件 | `src/game/parts.ts`，规范见 `docs/PARTS.md` |
+| 规则 | `docs/ROTATE-RINGS.md`。当前画面不画关卡 |
 
 ## DOM（勿拆）
 
@@ -61,13 +63,15 @@ npm run ios
 
 ## 业务怎么加
 
-- 玩法：改 `src/main.ts` 或 `src/game/*`  
+- 零件外形和组合：改 `src/game/parts.ts`，并同步 `docs/PARTS.md`  
+- 规则：`docs/ROTATE-RINGS.md` 与 `src/game/` 里的关卡逻辑。摆放只在 `play.ts`  
 - 保留：adapt / create-renderer / haptics / plugins / `base`  
 - 触控：`clientToDesign` + 忽略 letterbox 外  
 - 音效：按 `docs/AUDIO.md` 接入；禁止热路径 `new Audio()` / 每发一次桥  
 
 ## 刻意不做
 
-- 具体游戏玩法（demo 立方体可删）  
+- 把竖杆、横柄写进圆环网格。再加一套衔接，给 `ringWithConnectors` 再传一个角度  
+- 银卡扣接到环的衔接上。卡扣只属于胶囊棍，并且不走场景投影  
 - Android（可后加）  
 - WebGL 静默回退  

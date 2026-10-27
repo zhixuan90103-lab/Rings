@@ -3,7 +3,7 @@ import { barById, moveBar, ringById, rotateRing, settle, beginDrag, cancelDrag, 
 
 import { clampAngle, freeArcs, pinForbidden } from './interval';
 import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
-import { barOverlapAmount } from './volume';
+import { barOverlapAmount, barStillInBuckle } from './volume';
 
 function assert(cond: boolean, message: string): void {
   if (!cond) throw new Error(message);
@@ -124,8 +124,13 @@ rotateRing(slide, blueSlide, -1.2);
 assert(barOverlapAmount(red, red.t, blueSlide) === 0, 'the blue ring can turn back off the bar');
 assert(Math.abs(signedDelta(buried, blueSlide.theta)) > 0.2, 'turning back actually moves');
 blueSlide.theta = ringById(levelBasic(), 'blue')!.theta;
-moveBar(slide, red, 0.92);
-assert(red.t >= 0.7, 'the bar slides out along the gap');
+const buckle = slide.pins.find((pin) => pin.id === 'pin-buckle')!;
+moveBar(slide, red, 0.7);
+assert(barStillInBuckle(red, buckle.x, buckle.y), 'the bar still runs through the buckle');
+const heldBar = settle(slide, { kind: 'bar', id: 'bar-red', t: red.t });
+assert(!heldBar.includes('bar-red'), 'the bar stays while it is still in the buckle');
+moveBar(slide, red, 1.15);
+assert(!barStillInBuckle(red, buckle.x, buckle.y), 'the bar has left the buckle');
 moveBar(slide, red, 4);
 assert(red.t > 2, 'the bar keeps sliding outward with no rail end');
 red.t = tipT;

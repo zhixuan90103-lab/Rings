@@ -266,7 +266,7 @@ export function levelBasic(): Board {
       },
     ],
     latches: [
-      { id: 'buckle-red', barId: 'bar-red', x: 0, y: 0, t0: 0.7, t1: 1e6 },
+      { id: 'buckle-red', barId: 'bar-red', x: cx, y: cy, t0: 0, t1: 0 },
     ],
     volumes: true,
   };

@@ -104,8 +104,6 @@ export function mountPlay(options: {
   const root = new THREE.Group();
   scene.add(root);
 
-  const groundY = -viewSize().h / 2 + 0.35;
-
   let board: Board = LEVELS[0].make();
   let levelIndex = 0;
   let views: PieceView[] = [];
@@ -342,7 +340,7 @@ export function mountPlay(options: {
       const y = bar.y0 + (bar.y1 - bar.y0) * bar.t;
       obstacles.push({ x, y, radius: bar.half + 0.12 });
     }
-    stepFalls(falls, obstacles, groundY, dt);
+    stepFalls(falls, obstacles, -viewSize().h / 2, dt);
     for (const body of falls) {
       const view = views.find((item) => item.id === body.id);
       if (!view) continue;

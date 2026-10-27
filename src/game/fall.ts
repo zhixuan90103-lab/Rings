@@ -1,6 +1,6 @@
 import type { BarBody, RingBody } from './board';
 
-/** Gravity after a piece leaves the rule board. Locked pieces are static obstacles. */
+/** Gravity after a piece leaves the rule board. There is no floor. Locked pieces stay still. */
 
 export type FallBody = {
   id: string;
@@ -16,7 +16,6 @@ export type FallBody = {
 };
 
 const GRAVITY = -14;
-const REST = 0.18;
 
 export function fallFromRing(ring: RingBody): FallBody {
   return {
@@ -53,7 +52,7 @@ export function fallFromBar(bar: BarBody): FallBody {
 export function stepFalls(
   bodies: FallBody[],
   obstacles: { x: number; y: number; radius: number }[],
-  groundY: number,
+  viewBottom: number,
   dt: number,
 ): void {
   for (const body of bodies) {
@@ -62,13 +61,6 @@ export function stepFalls(
     body.x += body.vx * dt;
     body.y += body.vy * dt;
     body.theta += body.spin * dt;
-
-    if (body.y - body.radius < groundY) {
-      body.y = groundY + body.radius;
-      if (body.vy < 0) body.vy = -body.vy * REST;
-      body.vx *= 0.98;
-      body.spin *= 0.98;
-    }
 
     for (const obstacle of obstacles) {
       const dx = body.x - obstacle.x;
@@ -87,6 +79,6 @@ export function stepFalls(
       }
     }
 
-    if (body.y < groundY - 6) body.dead = true;
+    if (body.y + body.radius < viewBottom) body.dead = true;
   }
 }

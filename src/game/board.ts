@@ -16,7 +16,7 @@ import {
   type CircInterval,
   type LinInterval,
 } from './interval';
-import { barHitsRing, barOverlapAmount, barSegment, connectorHitsRing, ringVolumeHit } from './volume';
+import { barHitsRing, barOverlapAmount, barStillInBuckle, connectorHitsRing, leadDepth, ringVolumeHit } from './volume';
 
 export type RingBody = {
   id: string;
@@ -229,28 +229,6 @@ export function barBlocked(board: Board, bar: BarBody): LinInterval[] {
   return blocked;
 }
 
-function leadPoint(bar: BarBody, t: number, sign: number): { x: number; y: number } {
-  const seg = barSegment(bar, t);
-  return sign >= 0 ? { x: seg.bx, y: seg.by } : { x: seg.ax, y: seg.ay };
-}
-
-/** How far this point sits inside the ring solid. Zero means it is clear. */
-function pointDepth(ring: RingBody, x: number, y: number): number {
-  if (!ringSolidContains(ring, x, y)) return 0;
-  const d = Math.hypot(x - ring.x, y - ring.y);
-  return Math.max(ring.inner - d, d - ring.outer, 0.001);
-}
-
-function leadDepth(ring: RingBody, bar: BarBody, t: number, sign: number): number {
-  const lead = leadPoint(bar, t, sign);
-  let depth = pointDepth(ring, lead.x, lead.y);
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    depth = Math.max(depth, pointDepth(ring, lead.x + Math.cos(a) * bar.half, lead.y + Math.sin(a) * bar.half));
-  }
-  return depth;
-}
-
 export function moveBar(board: Board, bar: BarBody, target: number): void {
   if (!board.volumes) {
     const free = freeLinear(barBlocked(board, bar), 0, 1);
@@ -327,8 +305,10 @@ export function settle(board: Board, drag: Drag): string[] {
   } else {
     const bar = barById(board, drag.id);
     if (!bar) return [];
+    const buckle = board.pins.find((pin) => pin.ownerId === bar.id && pin.role === 'stop' && pin.stopHalf === 0);
     board.latches = board.latches.filter((latch) => {
       if (latch.barId !== bar.id) return true;
+      if (buckle) return barStillInBuckle(bar, buckle.x, buckle.y);
       return bar.t < latch.t0 || bar.t > latch.t1;
     });
   }

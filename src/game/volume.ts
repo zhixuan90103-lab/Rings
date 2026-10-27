@@ -148,6 +148,43 @@ export function barSegment(bar: BarBody, t: number): { ax: number; ay: number; b
   };
 }
 
+function buckleSleeve(bar: BarBody): { halfLen: number; halfW: number } {
+  const basis = PART.outer * 2 * SCALE;
+  const sleeveLen = basis * 0.32 * (2 / 3);
+  return { halfLen: sleeveLen / 2, halfW: bar.half * 1.3 };
+}
+
+/**
+ * How far the leading cap sits in the ring solid.
+ * Zero means that end is clear. Sliding only stops when this grows.
+ */
+export function leadDepth(ring: RingBody, bar: BarBody, t: number, sign: number): number {
+  const seg = barSegment(bar, t);
+  const lead = sign >= 0 ? { x: seg.bx, y: seg.by } : { x: seg.ax, y: seg.ay };
+  const at = (x: number, y: number) => {
+    if (!ringSector(ring, x, y)) return 0;
+    const d = Math.hypot(x - ring.x, y - ring.y);
+    return Math.max(ring.inner - d, d - ring.outer, 0.001);
+  };
+  let depth = at(lead.x, lead.y);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    depth = Math.max(depth, at(lead.x + Math.cos(a) * bar.half, lead.y + Math.sin(a) * bar.half));
+  }
+  return depth;
+}
+
+/** The drawn capsule still passes through the fixed silver buckle. */
+export function barStillInBuckle(bar: BarBody, px: number, py: number): boolean {
+  const frame = barFrame(bar, bar.t);
+  const along = (px - frame.x) * frame.ux + (py - frame.y) * frame.uy;
+  const across = (px - frame.x) * frame.nx + (py - frame.y) * frame.ny;
+  const sleeve = buckleSleeve(bar);
+  const grip = bar.grip > 0 ? bar.grip : 0.45;
+  if (Math.abs(across) > sleeve.halfW + bar.half) return false;
+  return Math.abs(along) < grip + sleeve.halfLen;
+}
+
 /** Silver sleeve and the two grips. The bar slides through this shape, so it is not a hit against its own bar. */
 function buckleHolds(bar: BarBody, x: number, y: number, px: number, py: number): boolean {
   const frame = barFrame(bar, bar.t);

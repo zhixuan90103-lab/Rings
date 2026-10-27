@@ -16,6 +16,37 @@ export const PART = {
 
 const BUCKLE_COLOR = 0xc8c7c5;
 
+/** Stem and clasp sizes in the same units as `outer` and `band`. No mesh. */
+export function connectorMetrics(outer: number, band: number): {
+  stemLen: number;
+  stemW: number;
+  claspLen: number;
+  claspW: number;
+  stemDist: number;
+  claspDist: number;
+  bend: number;
+} {
+  const stemLen = band * 2.5 * (2 / 3);
+  const stemW = band * 0.88;
+  const claspLen = band * 2.1 * (5 / 6);
+  const claspW = band * 1.4;
+  const stemDist = outer + stemLen * 0.5 - band * 0.2;
+  const claspDist = stemDist + stemLen * 0.5;
+  return { stemLen, stemW, claspLen, claspW, stemDist, claspDist, bend: outer - band / 2 };
+}
+
+/** Sleeve and grip sizes. `basis` is the unstretched bar length. No mesh. */
+export function buckleMetrics(width: number, basis: number): {
+  sleeveLen: number;
+  sleeveW: number;
+  gripSpan: number;
+  gripStick: number;
+} {
+  const sleeveLen = basis * 0.32 * (2 / 3);
+  const sleeveW = width * 1.3;
+  return { sleeveLen, sleeveW, gripSpan: sleeveLen * 0.62 * 0.7, gripStick: width * 0.48 * 0.7 };
+}
+
 export function plastic(color: number): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.02 });
 }
@@ -200,19 +231,14 @@ export function attachConnector(
   material: THREE.Material,
   angle: number,
 ): void {
-  const stemLen = band * 2.5 * (2 / 3);
-  const stemW = band * 0.88;
-  const claspLen = band * 2.1 * (5 / 6);
-  const claspW = band * 1.4;
-  const stemDist = outer + stemLen * 0.5 - band * 0.2;
-  const claspDist = stemDist + stemLen * 0.5;
+  const { stemLen, stemW, claspLen, claspW, stemDist, claspDist, bend } = connectorMetrics(outer, band);
   const c = Math.cos(angle);
   const s = Math.sin(angle);
   const stem = straightBar(stemLen, stemW, depth, material);
   stem.position.set(c * stemDist, s * stemDist, 0);
   stem.rotation.z = angle;
   parent.add(stem);
-  const clasp = bentClasp(claspLen, claspW, depth, outer - band / 2, material);
+  const clasp = bentClasp(claspLen, claspW, depth, bend, material);
   clasp.position.set(c * claspDist, s * claspDist, 0.08);
   clasp.rotation.z = angle + Math.PI / 2;
   parent.add(clasp);
@@ -240,8 +266,7 @@ export function ringWithConnectors(
 export function barWithBuckle(length: number, buckleBasis: number, width: number, depth: number, color: number): THREE.Group {
   const group = new THREE.Group();
   group.add(capsuleBar(length, width, depth, color));
-  const sleeveLen = buckleBasis * 0.32 * (2 / 3);
-  const sleeveW = width * 1.3;
+  const { sleeveLen, sleeveW, gripSpan, gripStick } = buckleMetrics(width, buckleBasis);
   const metal = new THREE.MeshStandardMaterial({ color: BUCKLE_COLOR, metalness: 0.04, roughness: 0.38 });
   const sleeve = straightBar(sleeveLen, sleeveW, depth * 1.2, metal);
   sleeve.position.z = 0.03;
@@ -249,8 +274,6 @@ export function barWithBuckle(length: number, buckleBasis: number, width: number
   sleeve.userData.noShadow = true;
   group.add(sleeve);
   group.add(fakeShadow(sleeveLen, sleeveW, 0.016, -0.014));
-  const gripSpan = sleeveLen * 0.62 * 0.7;
-  const gripStick = width * 0.48 * 0.7;
   for (const side of [-1, 1]) {
     const grip = straightBar(gripSpan, gripStick, depth * 1.2, metal);
     const y = side * (sleeveW / 2 + gripStick / 2);

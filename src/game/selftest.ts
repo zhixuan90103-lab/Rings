@@ -4,7 +4,7 @@ import { barById, moveBar, ringById, rotateRing, settle, beginDrag, cancelDrag, 
 import { clampAngle, freeArcs, pinForbidden } from './interval';
 import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
 import { dragEffect } from './feedback';
-import { barHitsRing, barOverlapAmount, barsOverlapAmount, barStillInBuckle, strikePoint } from './volume';
+import { barHitsRing, barOverlapAmount, barsOverlapAmount, barStillInBuckle, buckleOverlapAmount, connectorHitsRing, strikePoint } from './volume';
 import { BAR_RECOIL_WORLD, RING_RECOIL_MAX, WOBBLE_CYCLES, WOBBLE_SECONDS, beginRecoil, heldSign, releaseHold, stepRecoil, wobbleOffset } from './recoil';
 
 function assert(cond: boolean, message: string): void {
@@ -24,10 +24,12 @@ assert(!gapCovers(2, 0, 1), 'solid does not count as covered');
 
 for (const level of LEVELS) {
   const board = level.make();
-  for (const ring of board.rings) {
-    if (ring.gap <= 0) continue;
-    const arcs = ringFreeArcs(board, ring);
-    assert(arcs.length > 0, `${level.name} ${ring.id} has room to turn`);
+  if (!board.volumes) {
+    for (const ring of board.rings) {
+      if (ring.gap <= 0) continue;
+      const arcs = ringFreeArcs(board, ring);
+      assert(arcs.length > 0, `${level.name} ${ring.id} has room to turn`);
+    }
   }
   assert(board.rings.length + board.bars.length > 0, level.name);
 }
@@ -118,6 +120,23 @@ const releaseJoint = release.pins.find((pin) => pin.id === 'joint-green')!;
 releaseBlue.theta = Math.atan2(releaseJoint.y - releaseBlue.y, releaseJoint.x - releaseBlue.x);
 const openedBlue = settle(release, { kind: 'ring', id: 'blue', theta: releaseBlue.theta, x: 0, y: 0 });
 assert(openedBlue.includes('blue') && openedBlue.includes('green'), 'unlinking the rings lets both fall');
+const partial = levelBasic();
+const partialBlue = ringById(partial, 'blue')!;
+const partialGreen = ringById(partial, 'green')!;
+const partialJoint = partial.pins.find((pin) => pin.id === 'joint-green')!;
+const aligned = Math.atan2(partialJoint.y - partialBlue.y, partialJoint.x - partialBlue.x);
+let seated = false;
+for (const step of [0.15, 0.3, 0.45, 0.6, 0.75]) {
+  partialBlue.theta = aligned + step;
+  const alpha = Math.atan2(partialJoint.y - partialBlue.y, partialJoint.x - partialBlue.x);
+  if (gapCovers(partialBlue.theta, alpha, partialBlue.gap) && connectorHitsRing(partialGreen, partialBlue)) {
+    seated = true;
+    break;
+  }
+}
+assert(seated, 'a gap can cover the clasp while the handle is still in the solid');
+const stayedNested = settle(partial, { kind: 'ring', id: 'blue', theta: partialBlue.theta, x: 0, y: 0 });
+assert(!stayedNested.includes('blue'), 'pointerup keeps the clasp while the handle is still in the solid');
 assert(!openedBlue.includes('bar-red'), 'the bar stays while its own buckle still holds it');
 const slide = levelBasic();
 const red = barById(slide, 'bar-red')!;
@@ -135,7 +154,7 @@ rotateRing(slide, blueSlide, -1.2);
 assert(barOverlapAmount(red, red.t, blueSlide) === 0, 'the blue ring can turn back off the bar');
 assert(Math.abs(signedDelta(buried, blueSlide.theta)) > 0.2, 'turning back actually moves');
 blueSlide.theta = ringById(levelBasic(), 'blue')!.theta;
-const buckle = slide.pins.find((pin) => pin.id === 'pin-buckle')!;
+const buckle = slide.latches.find((latch) => latch.id === 'buckle-red')!;
 moveBar(slide, red, 0.7);
 assert(barStillInBuckle(red, buckle.x, buckle.y), 'the bar still runs through the buckle');
 const heldBar = settle(slide, { kind: 'bar', id: 'bar-red', t: red.t, x: 0, y: 0 });
@@ -187,7 +206,26 @@ rotateRing(slide, ringById(slide, 'green')!, 1.4);
 assert(Math.abs(signedDelta(greenHeld, ringById(slide, 'green')!.theta)) < 1.2, 'the bar leaving does not let the green clasp pass through the blue ring');
 const fellBar = settle(slide, { kind: 'bar', id: 'bar-red', t: tipT, x: 0, y: 0 });
 assert(fellBar.includes('bar-red') && !fellBar.includes('green') && !fellBar.includes('blue'), 'pulling the bar out of its buckle drops only the bar');
+const buckleBoard = levelBasic();
+const parked = barById(buckleBoard, 'bar-red')!;
+parked.t = 4;
+const bucklePin = buckleBoard.latches.find((latch) => latch.id === 'buckle-red')!;
+const against = ringById(buckleBoard, 'blue')!;
+const midR = (against.inner + against.outer) / 2;
+against.x = bucklePin.x - midR;
+against.y = bucklePin.y;
+against.theta = against.gap / 2 + 0.08;
+assert(barOverlapAmount(parked, parked.t, against) === 0, 'the capsule is parked clear of the buckle test');
+const buckleDepth = buckleOverlapAmount(parked, against, bucklePin.x, bucklePin.y);
+const bucklePose = against.theta;
+rotateRing(buckleBoard, against, 0.8);
+assert(buckleDepth > 0, 'the ring solid starts in the silver buckle');
+assert(buckleOverlapAmount(parked, against, bucklePin.x, bucklePin.y) <= buckleDepth + 1e-3, 'turning deeper into the buckle is rejected');
+assert(Math.abs(signedDelta(bucklePose, against.theta)) < 0.2, 'the silver buckle stops the ring');
+rotateRing(buckleBoard, against, -0.8);
+assert(Math.abs(signedDelta(bucklePose, against.theta)) > 0.05, 'the ring can turn back off the buckle');
 
+// levelScreen latches release by the drawn sleeve. t0/t1 are leftover window numbers and are not read.
 const chain = levelScreen();
 const reach = (id: string) => {
   const bar = barById(chain, id)!;
@@ -287,6 +325,7 @@ const capRing = {
   outer: 0.6,
   gap: 1,
   theta: 0,
+  connectors: [],
 };
 const capAngle = capRing.gap / 2;
 const capMid = (capRing.inner + capRing.outer) / 2;

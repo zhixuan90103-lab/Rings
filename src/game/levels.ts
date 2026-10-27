@@ -1,5 +1,6 @@
 import type { Board } from './board';
 import { syncPins } from './board';
+import { PART, connectorMetrics } from './parts';
 
 function holdPin(id: string, host: Board['rings'][number]): Board['pins'][number] {
   const angle = host.theta + Math.PI;
@@ -24,7 +25,7 @@ function ring(
   gap: number,
   theta: number,
 ): Board['rings'][number] {
-  return { id, kind: 'ring', x, y, inner: 0.42, outer: 0.68, gap, theta };
+  return { id, kind: 'ring', x, y, inner: 0.42, outer: 0.68, gap, theta, connectors: [] };
 }
 
 export function levelPin(): Board {
@@ -123,6 +124,7 @@ export function levelBar(): Board {
         y: 0.85 + Math.sin(0.2) * 0.55,
         t0: 0.72,
         t1: 1,
+        release: 'window',
       },
     ],
   };
@@ -183,14 +185,12 @@ export function levelStopClosed(): Board {
  * diagonally in the blue gap and slides along that diagonal.
  */
 export function levelBasic(): Board {
-  const scale = 0.9;
-  const outer = 0.72 * scale;
-  const inner = 0.72 * (1 - 0.28) * scale;
-  const gap = 1.75;
-  const band = 0.72 * 0.28;
-  const stemLen = band * 2.5 * (2 / 3) * scale;
-  const stemDist = (0.72 + (band * 2.5 * (2 / 3)) * 0.5 - band * 0.2) * scale;
-  const claspDist = stemDist + stemLen * 0.5;
+  const scale = PART.scale;
+  const outer = PART.outer * scale;
+  const inner = PART.outer * (1 - PART.bandRatio) * scale;
+  const gap = PART.gap;
+  const metrics = connectorMetrics(PART.outer, PART.outer * PART.bandRatio);
+  const claspDist = metrics.claspDist * scale;
   const blueTheta = -2.35;
   const blueX = 0.15;
   const blueY = 0.45;
@@ -208,6 +208,7 @@ export function levelBasic(): Board {
     gap,
     greenTheta,
   );
+  green.connectors = [joint];
   const blue = ring('blue', blueX, blueY, gap, blueTheta + Math.PI);
   for (const item of [blue, green]) {
     item.inner = inner;
@@ -243,17 +244,6 @@ export function levelBasic(): Board {
     ],
     pins: [
       {
-        id: 'pin-buckle',
-        ownerId: 'bar-red',
-        localAngle: 0,
-        localRadius: 0,
-        x: x0 + (x1 - x0) * t,
-        y: y0 + (y1 - y0) * t,
-        role: 'stop',
-        limitRingId: null,
-        stopHalf: 0,
-      },
-      {
         id: 'joint-green',
         ownerId: 'green',
         localAngle: Math.PI / 2,
@@ -266,7 +256,7 @@ export function levelBasic(): Board {
       },
     ],
     latches: [
-      { id: 'buckle-red', barId: 'bar-red', x: cx, y: cy, t0: 0, t1: 0 },
+      { id: 'buckle-red', barId: 'bar-red', x: cx, y: cy, t0: 0, t1: 0, release: 'sleeve' },
     ],
     volumes: true,
   };
@@ -296,17 +286,15 @@ export function levelScreen(): Board {
       { id: 'bar-purple', kind: 'bar', x0: -2.35, y0: -0.09, x1: 1.85, y1: -0.09, half: 0.14, grip: 0.85, t: 0.2 },
     ],
     pins: [
-      { id: 'pin-red', ownerId: 'bar-red', localAngle: 0, localRadius: 0, x: 0.1, y: 1.77, role: 'stop', limitRingId: null, stopHalf: 0 },
-      { id: 'pin-orange', ownerId: 'bar-orange', localAngle: 0, localRadius: 0, x: -1.15, y: 1.15, role: 'stop', limitRingId: null, stopHalf: 0 },
-      { id: 'pin-purple', ownerId: 'bar-purple', localAngle: 0, localRadius: 0, x: -1.12, y: -0.09, role: 'stop', limitRingId: null, stopHalf: 0 },
       holdPin('hold-blue', blue),
       holdPin('hold-green', green),
       holdPin('hold-orange', orange),
     ],
+    // Sleeve release, same as the old stopHalf 0 pins. The t0/t1 numbers are not read.
     latches: [
-      { id: 'buckle-red', barId: 'bar-red', x: 0.1, y: 1.77, t0: 0.78, t1: 1 },
-      { id: 'buckle-orange', barId: 'bar-orange', x: -1.15, y: 1.15, t0: 0.78, t1: 1 },
-      { id: 'buckle-purple', barId: 'bar-purple', x: -1.12, y: -0.09, t0: 0.78, t1: 1 },
+      { id: 'buckle-red', barId: 'bar-red', x: 0.1, y: 1.77, t0: 0.78, t1: 1, release: 'sleeve' },
+      { id: 'buckle-orange', barId: 'bar-orange', x: -1.15, y: 1.15, t0: 0.78, t1: 1, release: 'sleeve' },
+      { id: 'buckle-purple', barId: 'bar-purple', x: -1.12, y: -0.09, t0: 0.78, t1: 1, release: 'sleeve' },
     ],
   };
   syncPins(board);

@@ -364,8 +364,8 @@ export function mountPlay(options: {
     const { outer, gap, depth, scale } = PART;
     const band = outer * PART.bandRatio;
     for (const ring of board.rings) {
-      const mesh = ring.id === 'green'
-        ? ringWithConnectors(outer, band, gap, depth, colorOf(ring.id), [Math.PI / 2])
+      const mesh = ring.connectors.length > 0
+        ? ringWithConnectors(outer, band, gap, depth, colorOf(ring.id), ring.connectors)
         : discRing(outer, band, gap, depth, colorOf(ring.id));
       mesh.scale.setScalar(scale);
       mesh.position.set(ring.x, ring.y, 0);
@@ -387,8 +387,8 @@ export function mountPlay(options: {
       views.push({ id: bar.id, kind: 'bar', mesh: capsule, falling: false });
       const buckle = new THREE.Group();
       for (const child of [...stick.children]) buckle.add(child);
-      const pin = board.pins.find((item) => item.ownerId === bar.id && item.stopHalf === 0);
-      buckle.position.set(pin?.x ?? x, pin?.y ?? y, 0.2);
+      const latch = board.latches.find((item) => item.barId === bar.id && item.release === 'sleeve');
+      buckle.position.set(latch?.x ?? x, latch?.y ?? y, 0.2);
       buckle.rotation.z = capsule.rotation.z;
       buckle.userData.barId = bar.id;
       root.add(buckle);
@@ -409,19 +409,20 @@ export function mountPlay(options: {
     const { outer, depth, scale } = PART;
     const band = outer * PART.bandRatio;
     const basis = outer * 2 * scale;
+    for (const latch of board.latches) {
+      if (latch.release !== 'sleeve') continue;
+      const bar = barById(board, latch.barId);
+      if (!bar) continue;
+      const stick = barWithBuckle(basis * 1.5, basis, band * scale, depth * scale, colorOf(bar.id));
+      stick.remove(stick.children[0]);
+      stick.position.set(latch.x, latch.y, 0.2);
+      stick.rotation.z = Math.atan2(bar.y1 - bar.y0, bar.x1 - bar.x0);
+      stick.userData.barId = bar.id;
+      root.add(stick);
+      markers.push(stick);
+    }
     for (const pin of board.pins) {
       if (pin.ownerId && ringById(board, pin.ownerId)) continue;
-      if (pin.role === 'stop' && pin.stopHalf === 0 && pin.ownerId) {
-        const bar = barById(board, pin.ownerId);
-        const stick = barWithBuckle(basis * 1.5, basis, band * scale, depth * scale, colorOf(bar?.id ?? 'red'));
-        stick.remove(stick.children[0]);
-        stick.position.set(pin.x, pin.y, 0.2);
-        if (bar) stick.rotation.z = Math.atan2(bar.y1 - bar.y0, bar.x1 - bar.x0);
-        stick.userData.barId = pin.ownerId;
-        root.add(stick);
-        markers.push(stick);
-        continue;
-      }
       const bar = pin.ownerId ? barById(board, pin.ownerId) : undefined;
       const marker = jointMesh(
         pin.role === 'stop' && pin.stopHalf > 0.02 ? 'stop' : 'block',

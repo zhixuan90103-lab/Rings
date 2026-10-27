@@ -1,13 +1,13 @@
 /**
  * Flat volumes on one plane.
- * A ring does not block another ring with its own band or gap.
- * Ring-to-ring restraint is only the stem and handle.
- * The bar is what occupies a gap and stops that ring turning.
+ * A ring does not block another ring with its own band.
+ * Ring-to-ring restraint is the stem and handle.
+ * A bar capsule and its silver buckle stop a ring where the drawn shapes meet.
  */
 
 import type { BarBody, Board, RingBody } from './board';
 import { gapCovers, signedDelta, wrapAngle } from './angle';
-import { PART } from './parts';
+import { PART, buckleMetrics, connectorMetrics } from './parts';
 
 /**
  * Radius of the drawn gap cap.
@@ -27,32 +27,25 @@ function ringSector(ring: RingBody, x: number, y: number): boolean {
 
 const SCALE = PART.scale;
 
-export function connectorLocalAngle(ring: RingBody): number | null {
-  return ring.id === 'green' ? Math.PI / 2 : null;
-}
-
 function band(): number {
   return PART.outer * PART.bandRatio;
 }
 
 function connectorBox(ring: RingBody): { x: number; y: number; angle: number; length: number; width: number }[] {
-  const local = connectorLocalAngle(ring);
-  if (local === null) return [];
-  const b = band();
-  const stemLen = b * 2.5 * (2 / 3) * SCALE;
-  const stemW = b * 0.88 * SCALE;
-  const stemDist = (PART.outer + stemLen * 0.5 - b * 0.2) * SCALE;
-  const world = ring.theta + local;
-  const boxes = [
-    { dist: stemDist, angle: world, length: stemLen, width: stemW },
-  ];
-  return boxes.map((box) => ({
-    x: ring.x + Math.cos(world) * box.dist,
-    y: ring.y + Math.sin(world) * box.dist,
-    angle: world,
-    length: box.length,
-    width: box.width,
-  }));
+  const metrics = connectorMetrics(PART.outer, band());
+  const stemLen = metrics.stemLen * SCALE;
+  const stemW = metrics.stemW * SCALE;
+  const stemDist = metrics.stemDist * SCALE;
+  return ring.connectors.map((local) => {
+    const world = ring.theta + local;
+    return {
+      x: ring.x + Math.cos(world) * stemDist,
+      y: ring.y + Math.sin(world) * stemDist,
+      angle: world,
+      length: stemLen,
+      width: stemW,
+    };
+  });
 }
 
 function pushRingSamples(out: { x: number; y: number }[], ring: RingBody): void {
@@ -113,8 +106,7 @@ function ringHolds(ring: RingBody, x: number, y: number): boolean {
     if (dx * dx + dy * dy <= cap * cap) return true;
   }
   if (connectorBox(ring).some((box) => inBox(box, x, y))) return true;
-  const arc = claspArc(ring);
-  return arc ? inClasp(arc, x, y) : false;
+  return claspArcs(ring).some((arc) => inClasp(arc, x, y));
 }
 
 function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
@@ -151,9 +143,8 @@ export function barSegment(bar: BarBody, t: number): { ax: number; ay: number; b
 }
 
 function buckleSleeve(bar: BarBody): { halfLen: number; halfW: number } {
-  const basis = PART.outer * 2 * SCALE;
-  const sleeveLen = basis * 0.32 * (2 / 3);
-  return { halfLen: sleeveLen / 2, halfW: bar.half * 1.3 };
+  const { sleeveLen, sleeveW } = buckleSpec(bar);
+  return { halfLen: sleeveLen / 2, halfW: sleeveW / 2 };
 }
 
 /** The drawn capsule still passes through the fixed silver buckle. */
@@ -167,54 +158,36 @@ export function barStillInBuckle(bar: BarBody, px: number, py: number): boolean 
   return Math.abs(along) < grip + sleeve.halfLen;
 }
 
-/** Silver sleeve and the two grips. The bar slides through this shape, so it is not a hit against its own bar. */
-function buckleHolds(bar: BarBody, x: number, y: number, px: number, py: number): boolean {
+function buckleSpec(bar: BarBody): { sleeveLen: number; sleeveW: number; gripSpan: number; gripStick: number } {
+  return buckleMetrics(bar.half * 2, PART.outer * 2 * SCALE);
+}
+
+function buckleLocal(bar: BarBody, x: number, y: number, px: number, py: number): { lx: number; ly: number } {
   const frame = barFrame(bar, bar.t);
-  const width = bar.half * 2;
-  const basis = PART.outer * 2 * SCALE;
-  const sleeveLen = basis * 0.32 * (2 / 3);
-  const sleeveW = width * 1.3;
-  const gripSpan = sleeveLen * 0.62 * 0.7;
-  const gripStick = width * 0.48 * 0.7;
   const dx = x - px;
   const dy = y - py;
-  const lx = dx * frame.ux + dy * frame.uy;
-  const ly = dx * frame.nx + dy * frame.ny;
+  return {
+    lx: dx * frame.ux + dy * frame.uy,
+    ly: dx * frame.nx + dy * frame.ny,
+  };
+}
+
+/** How far a point sits inside one buckle box. Zero means it is outside. */
+function boxDepth(lx: number, ly: number, cx: number, cy: number, halfL: number, halfW: number): number {
+  const along = halfL - Math.abs(lx - cx);
+  const across = halfW - Math.abs(ly - cy);
+  if (along < 0 || across < 0) return 0;
+  return Math.min(along, across);
+}
+
+/** Silver sleeve and the two grips. The bar slides through this shape, so it is not a hit against its own bar. */
+function buckleHolds(bar: BarBody, x: number, y: number, px: number, py: number): boolean {
+  const { sleeveLen, sleeveW, gripSpan, gripStick } = buckleSpec(bar);
+  const { lx, ly } = buckleLocal(bar, x, y, px, py);
   if (Math.abs(lx) <= sleeveLen / 2 && Math.abs(ly) <= sleeveW / 2) return true;
   for (const side of [-1, 1]) {
     const gy = side * (sleeveW / 2 + gripStick / 2);
     if (Math.abs(lx) <= gripSpan / 2 && Math.abs(ly - gy) <= gripStick / 2) return true;
-  }
-  return false;
-}
-
-/** Stem or handle lies in the other ring's gap, so that ring cannot swing off it. */
-export function connectorOccupiesGap(owner: RingBody, other: RingBody): boolean {
-  if (connectorLocalAngle(owner) === null) return false;
-  for (const p of connectorSamples(owner)) {
-    const dx = p.x - other.x;
-    const dy = p.y - other.y;
-    const d = Math.hypot(dx, dy);
-    if (d > other.outer || d < other.inner * 0.45) continue;
-    if (gapCovers(other.theta, Math.atan2(dy, dx), other.gap)) return true;
-  }
-  return false;
-}
-
-/** The bar is sitting in this ring's gap, so the gap cannot swing away from it. */
-export function barOccupiesGap(bar: BarBody, t: number, ring: RingBody): boolean {
-  const seg = barSegment(bar, t);
-  const n = 16;
-  for (let i = 0; i <= n; i++) {
-    const u = i / n;
-    const x = seg.ax + (seg.bx - seg.ax) * u;
-    const y = seg.ay + (seg.by - seg.ay) * u;
-    const dx = x - ring.x;
-    const dy = y - ring.y;
-    const d = Math.hypot(dx, dy);
-    if (d > ring.outer + bar.half || d < ring.inner * 0.35) continue;
-    const alpha = Math.atan2(dy, dx);
-    if (gapCovers(ring.theta, alpha, ring.gap)) return true;
   }
   return false;
 }
@@ -262,6 +235,45 @@ export function barsOverlapAmount(a: BarBody, t: number, b: BarBody): number {
   return gap > 0 ? gap : 0;
 }
 
+/**
+ * How far this ring's solid sits inside the fixed silver buckle.
+ * The buckle blocks the ring. Its own bar still slides through it.
+ */
+export function buckleOverlapAmount(bar: BarBody, ring: RingBody, px: number, py: number): number {
+  const { sleeveLen, sleeveW, gripSpan, gripStick } = buckleSpec(bar);
+  const samples: { x: number; y: number }[] = [];
+  pushRingSamples(samples, ring);
+  let amount = 0;
+  for (const p of samples) {
+    const { lx, ly } = buckleLocal(bar, p.x, p.y, px, py);
+    amount += boxDepth(lx, ly, 0, 0, sleeveLen / 2, sleeveW / 2);
+    for (const side of [-1, 1]) {
+      const gy = side * (sleeveW / 2 + gripStick / 2);
+      amount += boxDepth(lx, ly, 0, gy, gripSpan / 2, gripStick / 2);
+    }
+  }
+  const frame = barFrame(bar, bar.t);
+  const sample = (lx: number, ly: number) => {
+    const x = px + frame.ux * lx + frame.nx * ly;
+    const y = py + frame.uy * lx + frame.ny * ly;
+    if (ringHolds(ring, x, y)) amount += bar.half;
+  };
+  for (let ix = 0; ix <= 4; ix++) {
+    for (let iy = 0; iy <= 2; iy++) {
+      sample(-sleeveLen / 2 + (sleeveLen * ix) / 4, -sleeveW / 2 + (sleeveW * iy) / 2);
+    }
+  }
+  for (const side of [-1, 1]) {
+    const gy = side * (sleeveW / 2 + gripStick / 2);
+    for (let ix = 0; ix <= 3; ix++) {
+      for (let iy = 0; iy <= 2; iy++) {
+        sample(-gripSpan / 2 + (gripSpan * ix) / 3, gy - gripStick / 2 + (gripStick * iy) / 2);
+      }
+    }
+  }
+  return amount;
+}
+
 /** How far the bar body is inside this ring. Zero means the drawn capsule is clear. */
 export function barOverlapAmount(bar: BarBody, t: number, ring: RingBody): number {
   const seg = barSegment(bar, t);
@@ -283,20 +295,7 @@ export function barOverlapAmount(bar: BarBody, t: number, ring: RingBody): numbe
 }
 
 export function barHitsRing(bar: BarBody, t: number, ring: RingBody): boolean {
-  const seg = barSegment(bar, t);
-  const samples: { x: number; y: number }[] = [];
-  pushRingSamples(samples, ring);
-  for (const p of samples) {
-    if (distToSegment(p.x, p.y, seg.ax, seg.ay, seg.bx, seg.by) <= bar.half) return true;
-  }
-  const n = 16;
-  for (let i = 0; i <= n; i++) {
-    const u = i / n;
-    const x = seg.ax + (seg.bx - seg.ax) * u;
-    const y = seg.ay + (seg.by - seg.ay) * u;
-    if (ringHolds(ring, x, y)) return true;
-  }
-  return false;
+  return barOverlapAmount(bar, t, ring) > 1e-4;
 }
 
 function connectorSamples(ring: RingBody): { x: number; y: number }[] {
@@ -313,8 +312,7 @@ function connectorSamples(ring: RingBody): { x: number; y: number }[] {
       }
     }
   }
-  const arc = claspArc(ring);
-  if (arc) {
+  for (const arc of claspArcs(ring)) {
     for (let i = 0; i <= 8; i++) {
       const a = arc.mid - arc.half + (2 * arc.half * i) / 8;
       for (const k of [-0.4, 0, 0.4]) {
@@ -326,28 +324,30 @@ function connectorSamples(ring: RingBody): { x: number; y: number }[] {
   return out;
 }
 
-function claspArc(ring: RingBody): { cx: number; cy: number; radius: number; half: number; width: number; mid: number } | null {
-  const local = connectorLocalAngle(ring);
-  if (local === null) return null;
-  const b = band();
-  const stemLen = b * 2.5 * (2 / 3) * SCALE;
-  const stemDist = (PART.outer + stemLen * 0.5 - b * 0.2) * SCALE;
-  const claspDist = stemDist + stemLen * 0.5;
-  const bend = (PART.outer - b / 2) * SCALE;
-  const world = ring.theta + local;
-  const ox = ring.x + Math.cos(world) * claspDist;
-  const oy = ring.y + Math.sin(world) * claspDist;
-  return {
-    cx: ox + Math.cos(world) * bend,
-    cy: oy + Math.sin(world) * bend,
-    radius: bend,
-    half: (b * 2.1 * (5 / 6) * SCALE) / 2 / bend,
-    width: b * 1.4 * SCALE,
-    mid: Math.atan2(-Math.sin(world), -Math.cos(world)),
-  };
+type ClaspArc = { cx: number; cy: number; radius: number; half: number; width: number; mid: number };
+
+function claspArcs(ring: RingBody): ClaspArc[] {
+  const metrics = connectorMetrics(PART.outer, band());
+  const claspDist = metrics.claspDist * SCALE;
+  const bend = metrics.bend * SCALE;
+  const claspLen = metrics.claspLen * SCALE;
+  const claspW = metrics.claspW * SCALE;
+  return ring.connectors.map((local) => {
+    const world = ring.theta + local;
+    const ox = ring.x + Math.cos(world) * claspDist;
+    const oy = ring.y + Math.sin(world) * claspDist;
+    return {
+      cx: ox + Math.cos(world) * bend,
+      cy: oy + Math.sin(world) * bend,
+      radius: bend,
+      half: claspLen / 2 / bend,
+      width: claspW,
+      mid: Math.atan2(-Math.sin(world), -Math.cos(world)),
+    };
+  });
 }
 
-function inClasp(arc: { cx: number; cy: number; radius: number; half: number; width: number; mid: number }, x: number, y: number): boolean {
+function inClasp(arc: ClaspArc, x: number, y: number): boolean {
   const d = Math.hypot(x - arc.cx, y - arc.cy);
   if (d < arc.radius - arc.width / 2 || d > arc.radius + arc.width / 2) return false;
   return Math.abs(signedDelta(arc.mid, Math.atan2(y - arc.cy, x - arc.cx))) <= arc.half;
@@ -355,82 +355,15 @@ function inClasp(arc: { cx: number; cy: number; radius: number; half: number; wi
 
 /** Stem and bent handle against the other ring. */
 export function connectorHitsRing(owner: RingBody, other: RingBody): boolean {
-  if (connectorLocalAngle(owner) === null) return false;
-  const arc = claspArc(owner);
+  if (owner.connectors.length === 0) return false;
   for (const p of connectorSamples(owner)) {
     if (ringHolds(other, p.x, p.y)) return true;
   }
-  if (!arc) return false;
+  const arcs = claspArcs(owner);
+  const boxes = connectorBox(owner);
   const bandSamples: { x: number; y: number }[] = [];
   pushRingSamples(bandSamples, other);
-  return bandSamples.some((p) => inClasp(arc, p.x, p.y) || connectorBox(owner).some((box) => inBox(box, p.x, p.y)));
-}
-
-function buckleHitsRing(bar: BarBody, ring: RingBody, px: number, py: number): boolean {
-  const frame = barFrame(bar, bar.t);
-  const width = bar.half * 2;
-  const basis = PART.outer * 2 * SCALE;
-  const sleeveLen = basis * 0.32 * (2 / 3);
-  const sleeveW = width * 1.3;
-  const gripSpan = sleeveLen * 0.62 * 0.7;
-  const gripStick = width * 0.48 * 0.7;
-  const sample = (lx: number, ly: number) => {
-    const x = px + frame.ux * lx + frame.nx * ly;
-    const y = py + frame.uy * lx + frame.ny * ly;
-    return ringHolds(ring, x, y);
-  };
-  for (let ix = 0; ix <= 4; ix++) {
-    for (let iy = 0; iy <= 2; iy++) {
-      if (sample(-sleeveLen / 2 + (sleeveLen * ix) / 4, -sleeveW / 2 + (sleeveW * iy) / 2)) return true;
-    }
-  }
-  for (const side of [-1, 1]) {
-    const gy = side * (sleeveW / 2 + gripStick / 2);
-    for (let ix = 0; ix <= 3; ix++) {
-      for (let iy = 0; iy <= 2; iy++) {
-        if (sample(-gripSpan / 2 + (gripSpan * ix) / 3, gy - gripStick / 2 + (gripStick * iy) / 2)) return true;
-      }
-    }
-  }
-  const samples: { x: number; y: number }[] = [];
-  pushRingSamples(samples, ring);
-  return samples.some((p) => buckleHolds(bar, p.x, p.y, px, py));
-}
-
-export function ringsOverlap(a: RingBody, b: RingBody): boolean {
-  return connectorHitsRing(a, b) || connectorHitsRing(b, a);
-}
-
-export function poseOverlaps(board: Board): boolean {
-  for (let i = 0; i < board.rings.length; i++) {
-    for (let j = i + 1; j < board.rings.length; j++) {
-      if (ringsOverlap(board.rings[i], board.rings[j])) return true;
-    }
-  }
-  for (const bar of board.bars) {
-    for (const ring of board.rings) {
-      if (barHitsRing(bar, bar.t, ring)) return true;
-    }
-  }
-  return false;
-}
-
-/**
- * The bar body stops a ring.
- * A ring's own clasp stops that ring when the clasp is inside another ring's solid.
- * The caught ring still turns through the clasp. Pointerup decides whether it is released.
- */
-export function ringVolumeHit(board: Board, ring: RingBody): boolean {
-  for (const bar of board.bars) {
-    if (barHitsRing(bar, bar.t, ring)) return true;
-    const buckle = board.pins.find((pin) => pin.ownerId === bar.id && pin.role === 'stop' && pin.stopHalf === 0);
-    if (buckle && buckleHitsRing(bar, ring, buckle.x, buckle.y)) return true;
-  }
-  for (const other of board.rings) {
-    if (other.id === ring.id) continue;
-    if (connectorHitsRing(ring, other)) return true;
-  }
-  return false;
+  return bandSamples.some((p) => arcs.some((arc) => inClasp(arc, p.x, p.y)) || boxes.some((box) => inBox(box, p.x, p.y)));
 }
 
 function pointBlocked(board: Board, ring: RingBody, x: number, y: number): boolean {
@@ -440,6 +373,8 @@ function pointBlocked(board: Board, ring: RingBody, x: number, y: number): boole
   for (const bar of board.bars) {
     const seg = barSegment(bar, bar.t);
     if (distToSegment(x, y, seg.ax, seg.ay, seg.bx, seg.by) <= bar.half) return true;
+    const buckle = board.latches.find((latch) => latch.barId === bar.id && latch.release === 'sleeve');
+    if (buckle && buckleHolds(bar, x, y, buckle.x, buckle.y)) return true;
   }
   return false;
 }

@@ -16,7 +16,7 @@ import {
   type CircInterval,
   type LinInterval,
 } from './interval';
-import { barHitsRing, barOverlapAmount, barsOverlapAmount, barStillInBuckle, connectorHitsRing, ringVolumeHit } from './volume';
+import { barOverlapAmount, barsOverlapAmount, barStillInBuckle, buckleOverlapAmount, connectorHitsRing } from './volume';
 
 export type RingBody = {
   id: string;
@@ -27,6 +27,8 @@ export type RingBody = {
   outer: number;
   gap: number;
   theta: number;
+  /** Local angles of stems and handles. Empty when this ring has none. */
+  connectors: number[];
 };
 
 export type BarBody = {
@@ -62,7 +64,10 @@ export type Pin = {
   stopHalf: number;
 };
 
-/** Silver buckle. It belongs to one bar and keeps that bar only. */
+/**
+ * Silver buckle or an old release window. It belongs to one bar and keeps that bar only.
+ * `sleeve` uses the drawn buckle at x, y. `window` releases when t is inside [t0, t1].
+ */
 export type Latch = {
   id: string;
   barId: string;
@@ -70,6 +75,7 @@ export type Latch = {
   y: number;
   t0: number;
   t1: number;
+  release: 'sleeve' | 'window';
 };
 
 export type Board = {
@@ -132,26 +138,7 @@ function blockingPoints(board: Board, ring: RingBody): { x: number; y: number; h
   return points;
 }
 
-function volumeForbidden(board: Board, ring: RingBody): CircInterval[] {
-  const saved = ring.theta;
-  const steps = 180;
-  const hits: LinInterval[] = [];
-  let run: number | null = null;
-  for (let i = 0; i <= steps; i++) {
-    const angle = (i / steps) * Math.PI * 2;
-    ring.theta = angle;
-    const hit = Math.abs(signedDelta(saved, angle)) > 1e-3 && ringVolumeHit(board, ring);
-    if (hit && run === null) run = angle;
-    if (!hit && run !== null) {
-      hits.push({ a: run, b: angle });
-      run = null;
-    }
-  }
-  ring.theta = saved;
-  if (run !== null) hits.push({ a: run, b: Math.PI * 2 });
-  return hits.map((hit) => ({ start: hit.a, length: hit.b - hit.a }));
-}
-
+/** Pin levels only. Volume levels step the overlap instead of sweeping free arcs. */
 export function ringFreeArcs(board: Board, ring: RingBody): CircInterval[] {
   const forbidden = [];
   for (const point of blockingPoints(board, ring)) {
@@ -159,7 +146,6 @@ export function ringFreeArcs(board: Board, ring: RingBody): CircInterval[] {
     const interval = point.hard ? hardForbidden(alpha, point.half) : pinForbidden(alpha, ring.gap);
     if (interval) forbidden.push(interval);
   }
-  if (board.volumes) forbidden.push(...volumeForbidden(board, ring));
   return freeArcs(forbidden);
 }
 
@@ -170,7 +156,11 @@ function overlapGrew(before: number, now: number): boolean {
 
 function ringBlockDepth(board: Board, ring: RingBody): number {
   let depth = 0;
-  for (const bar of board.bars) depth += barOverlapAmount(bar, bar.t, ring);
+  for (const bar of board.bars) {
+    depth += barOverlapAmount(bar, bar.t, ring);
+    const buckle = board.latches.find((latch) => latch.barId === bar.id && latch.release === 'sleeve');
+    if (buckle) depth += buckleOverlapAmount(bar, ring, buckle.x, buckle.y);
+  }
   return depth;
 }
 
@@ -221,16 +211,14 @@ function barPoint(bar: BarBody, t: number): { x: number; y: number } {
   };
 }
 
-/** Sample the rail. A t is blocked when that point lies in a locked ring's solid. */
+/** Pin levels only. A t is blocked when the bar center lies in a ring's annulus solid. */
 export function barBlocked(board: Board, bar: BarBody): LinInterval[] {
   const steps = 48;
   const blocked: LinInterval[] = [];
   let run: number | null = null;
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
-    const hit = board.volumes
-      ? board.rings.some((ring) => barHitsRing(bar, t, ring))
-      : board.rings.some((ring) => ringSolidContains(ring, barPoint(bar, t).x, barPoint(bar, t).y));
+    const hit = board.rings.some((ring) => ringSolidContains(ring, barPoint(bar, t).x, barPoint(bar, t).y));
     if (hit && run === null) run = t;
     if (!hit && run !== null) {
       blocked.push({ a: run, b: t });
@@ -309,6 +297,12 @@ export function settle(board: Board, drag: Drag): string[] {
     if (!ring) return [];
     board.pins = board.pins.filter((pin) => {
       if ((pin.role !== 'block' && pin.role !== 'catch') || pin.ownerId === ring.id) return true;
+      if (board.volumes && pin.role === 'catch' && pin.ownerId) {
+        const owner = ringById(board, pin.ownerId);
+        if (!owner || !pinHolds(ring, pin)) return true;
+        const alpha = Math.atan2(pin.y - ring.y, pin.x - ring.x);
+        return !(gapCovers(ring.theta, alpha, ring.gap) && !connectorHitsRing(owner, ring));
+      }
       if (!pinHolds(ring, pin)) return true;
       const alpha = Math.atan2(pin.y - ring.y, pin.x - ring.x);
       return !gapCovers(ring.theta, alpha, ring.gap);
@@ -316,10 +310,9 @@ export function settle(board: Board, drag: Drag): string[] {
   } else {
     const bar = barById(board, drag.id);
     if (!bar) return [];
-    const buckle = board.pins.find((pin) => pin.ownerId === bar.id && pin.role === 'stop' && pin.stopHalf === 0);
     board.latches = board.latches.filter((latch) => {
       if (latch.barId !== bar.id) return true;
-      if (buckle) return barStillInBuckle(bar, buckle.x, buckle.y);
+      if (latch.release === 'sleeve') return barStillInBuckle(bar, latch.x, latch.y);
       return bar.t < latch.t0 || bar.t > latch.t1;
     });
   }

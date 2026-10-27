@@ -65,7 +65,7 @@ npm run ios
 ## 业务怎么加
 
 - 零件外形和组合：改 `src/game/parts.ts`，并同步 `docs/PARTS.md`。已定稿的尺寸、倒角、颜色不要跟着操作改  
-- 操作：`src/game/play.ts` 收指针，`src/game/board.ts` 算切向转角和沿长边的位移。银卡扣不进拖动。跟手以 `docs/ROTATE-RINGS.md` §4 为准  
+- 操作：`src/game/play.ts` 收指针，`src/game/board.ts` 算切向转角和沿长边的位移。银卡扣不进拖动。体积关按重叠变深退回，销钉关用禁区弧。跟手以 `docs/ROTATE-RINGS.md` §4 为准  
 - 规则：`docs/ROTATE-RINGS.md` 与 `src/game/` 里的关卡逻辑。当前画面是 `levelBasic`  
 - 保留：adapt / create-renderer / haptics / plugins / `base`  
 - 触控：`clientToDesign` + 忽略 letterbox 外  

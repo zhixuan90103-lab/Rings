@@ -4,7 +4,7 @@
 
 顶视，正交相机从 +Z 看 XY。零件是有厚度的扁片。背景 `#fbf0e0`。
 
-代码在 `src/game/parts.ts`。`play.ts` 的 `showLevel` 负责摆上当前关卡。拖动在 `play.ts` 和 `board.ts`，不改零件网格。跟手见 [ROTATE-RINGS.md](./ROTATE-RINGS.md) §4。
+代码在 `src/game/parts.ts`。竖条、圆弧柄、套筒、把手的比例只写在 `connectorMetrics` 和 `buckleMetrics`，碰撞和摆关卡读这两份，不再各抄一遍。`play.ts` 的 `showLevel` 按环上的 `connectors` 装衔接，按套筒卡扣的固定点放银卡扣。拖动在 `play.ts` 和 `board.ts`，不改零件网格。跟手见 [ROTATE-RINGS.md](./ROTATE-RINGS.md) §4。
 
 ## 单独部件
 
@@ -42,7 +42,7 @@
 
 `levelBasic`：
 
-- 开局蓝环卡在绿环把手里。蓝环可以转进转出，松手才判断。把手还嵌在蓝环实心里时，绿环不能转。
+- 开局蓝环卡在绿环把手里。蓝环可以转进转出。松手时缺口对准把手，并且柄已经离开实心，两边才解开。把手还嵌在蓝环实心里时，绿环不能转。
 - 红胶囊棍斜着插进蓝环缺口，没有轨道端点。胶囊和环的实心重叠变深才停。银卡扣属于这根棍，滑动时固定在画面上，它的套筒和把手挡住环，不挡住自己的杆。整根杆身离开卡扣后，棍和银卡扣一起掉出画面。把手属于绿环，两环还连着时不掉。
 
-再加一套衔接，给 `ringWithConnectors` 再传一个角度。不要把竖杆写进圆环网格里。
+再加一套衔接，往这只环的 `connectors` 里加一个本地角。画面用这份数组调用 `ringWithConnectors`。不要把竖杆写进圆环网格里。

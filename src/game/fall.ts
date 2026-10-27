@@ -32,6 +32,22 @@ export function fallFromRing(ring: RingBody): FallBody {
   };
 }
 
+/** The silver rivet leaves with its bar, from wherever it was locked. */
+export function fallFromRivet(id: string, x: number, y: number, theta: number): FallBody {
+  return {
+    id,
+    kind: 'bar',
+    x,
+    y,
+    vx: (Math.random() - 0.5) * 0.4,
+    vy: 0.15,
+    radius: 0.16,
+    theta,
+    spin: (Math.random() - 0.5) * 4.5,
+    dead: false,
+  };
+}
+
 export function fallFromBar(bar: BarBody): FallBody {
   const x = bar.x0 + (bar.x1 - bar.x0) * bar.t;
   const y = bar.y0 + (bar.y1 - bar.y0) * bar.t;

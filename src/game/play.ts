@@ -25,7 +25,7 @@ import {
   type Drag,
 } from './board';
 import { signedDelta } from './angle';
-import { fallFromBar, fallFromRing, stepFalls, type FallBody } from './fall';
+import { fallFromBar, fallFromRing, fallFromRivet, stepFalls, type FallBody } from './fall';
 import { LEVELS } from './levels';
 import { dragEffect, mountFeedback } from './feedback';
 import { strikePoint } from './volume';
@@ -111,6 +111,7 @@ export function mountPlay(options: {
   let levelIndex = 0;
   let views: PieceView[] = [];
   let markers: THREE.Object3D[] = [];
+  let rivets: { mesh: THREE.Object3D; body: FallBody }[] = [];
   let drag: Drag | null = null;
   let dragMoved = false;
   let pointerId: number | null = null;
@@ -142,6 +143,11 @@ export function mountPlay(options: {
     views = [];
     markers = [];
     falls = [];
+    for (const rivet of rivets) {
+      disposeObject(rivet.mesh);
+      root.remove(rivet.mesh);
+    }
+    rivets = [];
   }
 
   function addMarker(mesh: THREE.Object3D, x: number, y: number, pinId?: string): void {
@@ -324,7 +330,17 @@ export function mountPlay(options: {
         if (!view) continue;
         view.falling = true;
         if (ring) falls.push(fallFromRing(ring));
-        else if (bar) falls.push(fallFromBar(bar));
+        else if (bar) {
+          falls.push(fallFromBar(bar));
+          const rivet = markers.find((marker) => marker.userData.barId === id);
+          if (rivet) {
+            markers = markers.filter((marker) => marker !== rivet);
+            rivets.push({
+              mesh: rivet,
+              body: fallFromRivet(id, rivet.position.x, rivet.position.y, rivet.rotation.z),
+            });
+          }
+        }
       }
       buildMarkersOnly();
       if (left.length > 0) onRelease();
@@ -374,6 +390,7 @@ export function mountPlay(options: {
       const pin = board.pins.find((item) => item.ownerId === bar.id && item.stopHalf === 0);
       buckle.position.set(pin?.x ?? x, pin?.y ?? y, 0.2);
       buckle.rotation.z = capsule.rotation.z;
+      buckle.userData.barId = bar.id;
       root.add(buckle);
       markers.push(buckle);
     }
@@ -400,6 +417,7 @@ export function mountPlay(options: {
         stick.remove(stick.children[0]);
         stick.position.set(pin.x, pin.y, 0.2);
         if (bar) stick.rotation.z = Math.atan2(bar.y1 - bar.y0, bar.x1 - bar.x0);
+        stick.userData.barId = pin.ownerId;
         root.add(stick);
         markers.push(stick);
         continue;
@@ -438,6 +456,12 @@ export function mountPlay(options: {
       obstacles.push({ x, y, radius: bar.half + 0.12 });
     }
     stepFalls(falls, obstacles, -viewSize().h / 2, dt);
+    stepFalls(rivets.map((rivet) => rivet.body), obstacles, -viewSize().h / 2, dt);
+    for (const rivet of rivets) {
+      rivet.mesh.position.set(rivet.body.x, rivet.body.y, 0.2);
+      rivet.mesh.rotation.z = rivet.body.theta;
+      if (rivet.body.dead) rivet.mesh.visible = false;
+    }
     feedback.step(dt);
     if (drag || feedback.busy()) syncMeshes();
     for (const body of falls) {

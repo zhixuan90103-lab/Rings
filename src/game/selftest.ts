@@ -65,6 +65,11 @@ const both = settle(closedLevel, { kind: 'ring', id: 'open', theta: 0, pointerAn
 assert(both.includes('open') && both.includes('closed'), 'closed ring leaves only by cascade');
 
 const basic = levelBasic();
+const greenNested = ringById(basic, 'green')!.theta;
+rotateRing(basic, ringById(basic, 'green')!, 0.6);
+assert(Math.abs(signedDelta(greenNested, ringById(basic, 'green')!.theta)) < 0.08, 'while the clasp is in the blue ring, the green ring cannot turn');
+rotateRing(basic, ringById(basic, 'green')!, -0.6);
+assert(Math.abs(signedDelta(greenNested, ringById(basic, 'green')!.theta)) < 0.08, 'the nested clasp blocks both ways');
 const blue = ringById(basic, 'blue')!;
 const joint = basic.pins.find((pin) => pin.id === 'joint-green')!;
 const jointAngle = Math.atan2(joint.y - blue.y, joint.x - blue.x);
@@ -98,7 +103,7 @@ moveBar(slide, red, 0.92);
 assert(red.t >= 0.7, 'the bar slides out along the gap');
 const greenHeld = ringById(slide, 'green')!.theta;
 rotateRing(slide, ringById(slide, 'green')!, 0.4);
-assert(Math.abs(signedDelta(greenHeld, ringById(slide, 'green')!.theta)) > 0.15, 'the green ring turns after the bar leaves its gap');
+assert(Math.abs(signedDelta(greenHeld, ringById(slide, 'green')!.theta)) < 0.08, 'pulling the bar out does not free the nested green ring');
 const fellBar = settle(slide, { kind: 'bar', id: 'bar-red', t: tipT });
 assert(fellBar.includes('bar-red') && fellBar.includes('green'), 'the bar releases the green ring');
 

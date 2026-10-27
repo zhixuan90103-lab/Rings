@@ -127,6 +127,70 @@ function fakeShadow(length: number, width: number, x: number, y: number): THREE.
   return mesh;
 }
 
+/**
+ * Same length, width and square ends as the straight clasp.
+ * The long axis follows the outer ring it rests on. Local origin is the clasp center.
+ * Local -Y points at that ring's center.
+ */
+function claspProfile(width: number, depth: number): { u: number; v: number }[] {
+  const r = Math.min(width * 0.28, depth * 0.45);
+  const hw = width / 2;
+  const hd = depth / 2;
+  const pts: { u: number; v: number }[] = [];
+  const corner = (cx: number, cy: number, a0: number, a1: number) => {
+    const n = 4;
+    for (let i = 0; i < n; i++) {
+      const t = a0 + ((a1 - a0) * i) / n;
+      pts.push({ u: cx + Math.cos(t) * r, v: cy + Math.sin(t) * r });
+    }
+  };
+  corner(-hw + r, -hd + r, Math.PI, Math.PI * 1.5);
+  corner(hw - r, -hd + r, -Math.PI / 2, 0);
+  corner(hw - r, hd - r, 0, Math.PI / 2);
+  corner(-hw + r, hd - r, Math.PI / 2, Math.PI);
+  return pts;
+}
+
+/** Bent clasp. Long edges keep the straight bar's fillet. The two ends stay square cuts. */
+function bentClasp(length: number, width: number, depth: number, radius: number, material: THREE.Material): THREE.Mesh {
+  const profile = claspProfile(width, depth);
+  const half = length / 2 / radius;
+  const steps = 18;
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const count = profile.length;
+  for (let i = 0; i <= steps; i++) {
+    const a = Math.PI / 2 - half + (2 * half * i) / steps;
+    const radialX = Math.cos(a);
+    const radialY = Math.sin(a);
+    for (const p of profile) {
+      positions.push(radialX * (radius + p.u), -radius + radialY * (radius + p.u), p.v);
+    }
+  }
+  for (let i = 0; i < steps; i++) {
+    for (let j = 0; j < count; j++) {
+      const a = i * count + j;
+      const b = i * count + ((j + 1) % count);
+      const c = (i + 1) * count + j;
+      const d = (i + 1) * count + ((j + 1) % count);
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+  const cap = (station: number, outward: boolean) => {
+    const base = station * count;
+    for (let j = 1; j < count - 1; j++) {
+      indices.push(base, base + (outward ? j + 1 : j), base + (outward ? j : j + 1));
+    }
+  };
+  cap(0, false);
+  cap(steps, true);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return new THREE.Mesh(geometry, material);
+}
+
 /** One stem plus one clasp, on the outside of a ring at `angle` (0 = +X). */
 export function attachConnector(
   parent: THREE.Object3D,
@@ -148,7 +212,7 @@ export function attachConnector(
   stem.position.set(c * stemDist, s * stemDist, 0);
   stem.rotation.z = angle;
   parent.add(stem);
-  const clasp = straightBar(claspLen, claspW, depth, material);
+  const clasp = bentClasp(claspLen, claspW, depth, outer - band / 2, material);
   clasp.position.set(c * claspDist, s * claspDist, 0.08);
   clasp.rotation.z = angle + Math.PI / 2;
   parent.add(clasp);

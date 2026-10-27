@@ -236,10 +236,17 @@ export function poseOverlaps(board: Board): boolean {
   return false;
 }
 
-/** The bar body stops a ring. A clasp does not: the ring passes through it, and pointerup decides. */
+/**
+ * The bar body stops a ring.
+ * A ring's own clasp stops that ring when the clasp is inside another ring's solid.
+ * The caught ring still turns through the clasp. Pointerup decides whether it is released.
+ */
 export function ringVolumeHit(board: Board, ring: RingBody): boolean {
   for (const bar of board.bars) {
     if (barHitsRing(bar, bar.t, ring)) return true;
+  }
+  for (const other of board.rings) {
+    if (other.id !== ring.id && connectorHitsRing(ring, other)) return true;
   }
   return false;
 }

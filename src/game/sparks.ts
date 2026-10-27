@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 
 const SPARK_COUNT = 9;
+const SPARK_RADIUS = 0.055 * 0.7;
+const SPARK_GRAVITY = 16;
 
 export type SparkBurst = {
   root: THREE.Group;
@@ -17,7 +19,7 @@ export function makeSparkBurst(x: number, y: number, color: number): SparkBurst 
   const bits: THREE.Mesh[] = [];
   const velocities = new Float32Array(SPARK_COUNT * 2);
   const life = new Float32Array(SPARK_COUNT);
-  const geometry = new THREE.CircleGeometry(0.055 * 0.7, 10);
+  const geometry = new THREE.CircleGeometry(SPARK_RADIUS, 10);
   for (let i = 0; i < SPARK_COUNT; i++) {
     const mesh = new THREE.Mesh(
       geometry,
@@ -51,7 +53,7 @@ export function stepSparkBurst(burst: SparkBurst, dt: number): boolean {
     }
     mesh.position.x += burst.velocities[i * 2] * dt;
     mesh.position.y += burst.velocities[i * 2 + 1] * dt;
-    burst.velocities[i * 2 + 1] -= 16 * dt;
+    burst.velocities[i * 2 + 1] -= SPARK_GRAVITY * dt;
     const scale = 1 - burst.age / life;
     mesh.scale.setScalar(scale);
   }

@@ -455,8 +455,32 @@ function centroid(points: { x: number; y: number }[]): { x: number; y: number } 
   return { x: x / points.length, y: y / points.length };
 }
 
+function distToBars(board: Board, x: number, y: number): number {
+  let best = Infinity;
+  for (const bar of board.bars) {
+    const seg = barSegment(bar, bar.t);
+    best = Math.min(best, distToSegment(x, y, seg.ax, seg.ay, seg.bx, seg.by));
+  }
+  return best;
+}
+
+/** One contact patch. Averaging the left and right sides lands in the hole. */
+function nearestPatch(board: Board, fresh: { x: number; y: number }[]): { x: number; y: number } {
+  let nearest = fresh[0];
+  let best = distToBars(board, nearest.x, nearest.y);
+  for (const p of fresh) {
+    const d = distToBars(board, p.x, p.y);
+    if (d < best) {
+      best = d;
+      nearest = p;
+    }
+  }
+  const patch = fresh.filter((p) => Math.hypot(p.x - nearest.x, p.y - nearest.y) < 0.08);
+  return centroid(patch);
+}
+
 /** First new contact along the push. A long probe would average in later overlaps. */
-export function ringStrikePoint(board: Board, ring: RingBody, sign: number): { x: number; y: number } | null {
+function ringStrikePoint(board: Board, ring: RingBody, sign: number): { x: number; y: number } | null {
   const saved = ring.theta;
   const dir = Math.sign(sign) || 1;
   const beforeMove = ringBodySamples(ring);
@@ -476,7 +500,7 @@ export function ringStrikePoint(board: Board, ring: RingBody, sign: number): { x
       for (const p of fixedHits(board, ring)) {
         if (!seen.has(`${p.x.toFixed(3)},${p.y.toFixed(3)}`)) fresh.push(p);
       }
-      if (fresh.length > 0) return centroid(fresh);
+      if (fresh.length > 0) return nearestPatch(board, fresh);
     }
     return null;
   } finally {
@@ -484,8 +508,18 @@ export function ringStrikePoint(board: Board, ring: RingBody, sign: number): { x
   }
 }
 
+/** Where this push first meets the other part. Presentation only. */
+export function strikePoint(board: Board, kind: 'ring' | 'bar', id: string, sign: number): { x: number; y: number } | null {
+  if (kind === 'ring') {
+    const ring = board.rings.find((item) => item.id === id);
+    return ring ? ringStrikePoint(board, ring, sign) : null;
+  }
+  const bar = board.bars.find((item) => item.id === id);
+  return bar ? barStrikePoint(board, bar, sign) : null;
+}
+
 /** Leading cap of a bar at the moment it enters a ring. */
-export function barStrikePoint(board: Board, bar: BarBody, sign: number): { x: number; y: number } | null {
+function barStrikePoint(board: Board, bar: BarBody, sign: number): { x: number; y: number } | null {
   const saved = bar.t;
   const dir = Math.sign(sign) || 1;
   try {

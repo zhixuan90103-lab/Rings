@@ -27,9 +27,8 @@ import {
 import { signedDelta } from './angle';
 import { fallFromBar, fallFromRing, stepFalls, type FallBody } from './fall';
 import { LEVELS } from './levels';
-import { BAR_RECOIL_WORLD, CLICK_RECOIL_SCALE, RING_RECOIL_MAX, beginRecoil, heldSign, releaseHold, stepRecoil, wobbleOffset, type Recoil } from './recoil';
-import { disposeSparkBurst, makeSparkBurst, stepSparkBurst, type SparkBurst } from './sparks';
-import { barStrikePoint, ringStrikePoint } from './volume';
+import { dragEffect, mountFeedback } from './feedback';
+import { strikePoint } from './volume';
 
 const VIEW_H = 10;
 
@@ -115,11 +114,7 @@ export function mountPlay(options: {
   let drag: Drag | null = null;
   let dragMoved = false;
   let pointerId: number | null = null;
-  let recoil: { id: string; kind: 'ring' | 'bar'; body: Recoil } | null = null;
-  let sparks: SparkBurst[] = [];
-  let glow: { mesh: THREE.Object3D; left: number } | null = null;
-  let impactArmed = true;
-  let freeSinceImpact = 0;
+  const feedback = mountFeedback(root);
   let falls: FallBody[] = [];
   let last = performance.now();
 
@@ -185,94 +180,29 @@ export function mountPlay(options: {
       const pin = board.pins.find((item) => item.id === pinId);
       if (pin) marker.position.set(pin.x, pin.y, 0.2);
     }
-    applyRecoil();
+    applyFeedback();
   }
 
-  function barRecoilMax(id: string): number {
-    const bar = barById(board, id);
-    if (!bar) return 0;
-    const len = Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0);
-    return BAR_RECOIL_WORLD / Math.max(len, 1e-4);
-  }
-
-  function clearRecoil(): void {
-    recoil = null;
-  }
-
-  function noteRejected(id: string, kind: 'ring' | 'bar', rejected: number, fromClick = false): void {
-    if (Math.abs(rejected) < 1e-4) return;
-    if (!fromClick && recoil && recoil.id === id) return;
-    const full = kind === 'ring' ? RING_RECOIL_MAX : barRecoilMax(id);
-    const max = fromClick ? full * CLICK_RECOIL_SCALE : full;
-    const body = beginRecoil(rejected, max);
-    if (!body) return;
-    recoil = { id, kind, body };
-  }
-
-  function ringIsHeld(id: string): boolean {
-    return recoil?.id === id && recoil.body.hold === true;
-  }
-
-  function holdRing(id: string, rejected: number): void {
-    const sign = heldSign(ringIsHeld(id) ? recoil!.body.sign : null, rejected);
-    if (sign === null) return;
-    if (ringIsHeld(id)) return;
-    const body = beginRecoil(sign, RING_RECOIL_MAX, true);
-    if (!body) return;
-    recoil = { id, kind: 'ring', body };
-  }
-
-  function clearSparks(): void {
-    for (const burst of sparks) {
-      root.remove(burst.root);
-      disposeSparkBurst(burst);
-    }
-    sparks = [];
-    if (glow) setGlow(glow.mesh, 0);
-    glow = null;
-    impactArmed = true;
-    freeSinceImpact = 0;
-  }
-
-  function setGlow(mesh: THREE.Object3D, intensity: number): void {
-    mesh.traverse((node) => {
-      const material = (node as THREE.Mesh).material;
-      if (material instanceof THREE.MeshStandardMaterial) {
-        material.emissive.setHex(0xffc98a);
-        material.emissiveIntensity = intensity;
+  function applyFeedback(): void {
+    for (const view of views) {
+      if (view.falling) continue;
+      const offset = feedback.offset(view.id);
+      if (offset === 0) continue;
+      if (view.kind === 'ring') {
+        view.mesh.rotation.z += offset;
+        continue;
       }
-    });
+      const bar = barById(board, view.id);
+      if (!bar) continue;
+      view.mesh.position.x += (bar.x1 - bar.x0) * offset;
+      view.mesh.position.y += (bar.y1 - bar.y0) * offset;
+    }
   }
 
-  function spawnImpact(kind: 'ring' | 'bar', id: string, sign: number): void {
+  function showImpact(kind: 'ring' | 'bar', id: string, sign: number): void {
     const view = views.find((item) => item.id === id && !item.falling);
     if (!view) return;
-    const ring = kind === 'ring' ? ringById(board, id) : null;
-    const bar = kind === 'bar' ? barById(board, id) : null;
-    const contact = ring ? ringStrikePoint(board, ring, sign) : bar ? barStrikePoint(board, bar, sign) : null;
-    if (contact) {
-      const burst = makeSparkBurst(contact.x, contact.y, colorOf(id));
-      sparks.push(burst);
-      root.add(burst.root);
-    }
-    if (glow && glow.mesh !== view.mesh) setGlow(glow.mesh, 0);
-    setGlow(view.mesh, 0.16);
-    glow = { mesh: view.mesh, left: 0.18 };
-  }
-
-  function applyRecoil(): void {
-    if (!recoil) return;
-    const view = views.find((item) => item.id === recoil!.id && !item.falling);
-    if (!view) return;
-    const offset = wobbleOffset(recoil.body);
-    if (view.kind === 'ring') {
-      view.mesh.rotation.z += offset;
-      return;
-    }
-    const bar = barById(board, view.id);
-    if (!bar) return;
-    view.mesh.position.x += (bar.x1 - bar.x0) * offset;
-    view.mesh.position.y += (bar.y1 - bar.y0) * offset;
+    feedback.impact(view.mesh, strikePoint(board, kind, id, sign), colorOf(id));
   }
 
   function worldFromEvent(event: PointerEvent, clampToDesign: boolean): { x: number; y: number } | null {
@@ -310,9 +240,7 @@ export function mountPlay(options: {
     if (!next) return;
     drag = next;
     dragMoved = false;
-    impactArmed = true;
-    freeSinceImpact = 0;
-    clearRecoil();
+    feedback.arm();
     pointerId = event.pointerId;
     canvas.setPointerCapture(event.pointerId);
   }
@@ -331,7 +259,7 @@ export function mountPlay(options: {
 
   function onPointerMove(event: PointerEvent): void {
     if (event.pointerId !== pointerId || !drag) return;
-    if (drag.kind === 'ring' && ringIsHeld(drag.id)) {
+    if (drag.kind === 'ring' && feedback.holding(drag.id)) {
       syncMeshes();
       return;
     }
@@ -348,24 +276,29 @@ export function mountPlay(options: {
     const applied = drag.kind === 'ring' ? signedDelta(before, after) : after - before;
     if (Math.abs(applied) >= 1e-4) {
       dragMoved = true;
-      if (recoil?.id === drag.id) clearRecoil();
+      if (feedback.holding(drag.id)) feedback.clearPose();
     }
-    const hitWall = dragMoved && Math.abs(rejected) > 1e-4;
-    if (hitWall && impactArmed) {
-      impactArmed = false;
-      freeSinceImpact = 0;
-      spawnImpact(drag.kind, drag.id, Math.sign(rejected) || 1);
-    } else if (!hitWall && Math.abs(applied) > 1e-4) {
-      freeSinceImpact += Math.abs(applied);
-      const rearm = drag.kind === 'ring' ? 0.08 : 0.03;
-      if (freeSinceImpact > rearm) impactArmed = true;
-    }
-    if (!dragMoved && Math.abs(rejected) > 1e-4) {
-      if (drag.kind === 'ring') holdRing(drag.id, rejected);
-      else {
-        noteRejected(drag.id, drag.kind, rejected);
-        stopInvalidDrag(event);
-      }
+    const effect = dragEffect({
+      kind: drag.kind,
+      moved: dragMoved,
+      applied,
+      rejected,
+      armed: feedback.state.armed,
+      free: feedback.state.free,
+    });
+    if (effect.type === 'hit') {
+      feedback.state.armed = false;
+      feedback.state.free = 0;
+      showImpact(drag.kind, drag.id, effect.sign);
+    } else if (effect.type === 'free') {
+      feedback.state.armed = effect.armed;
+      feedback.state.free = effect.free;
+    } else if (effect.type === 'hold') feedback.holdRing(drag.id, rejected);
+    else if (effect.type === 'stop') {
+      const bar = barById(board, drag.id);
+      const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
+      feedback.stopBar(drag.id, rejected, length);
+      stopInvalidDrag(event);
       syncMeshes();
       return;
     }
@@ -397,11 +330,14 @@ export function mountPlay(options: {
     dragMoved = false;
     pointerId = null;
     const stayed = views.some((view) => view.id === clicked.id && !view.falling);
-    const heldBody = recoil?.id === clicked.id && recoil.body.hold ? recoil.body : null;
-    if (cancel || !stayed) clearRecoil();
-    else if (heldBody) releaseHold(heldBody);
-    else if (!moved) noteRejected(clicked.id, clicked.kind, 1, true);
-    else clearRecoil();
+    const held = feedback.holding(clicked.id);
+    if (cancel || !stayed) feedback.clearPose();
+    else if (held) feedback.releaseHold();
+    else if (!moved) {
+      const bar = barById(board, clicked.id);
+      const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
+      feedback.click(clicked.id, clicked.kind, length);
+    } else feedback.clearPose();
     syncMeshes();
   }
 
@@ -499,20 +435,8 @@ export function mountPlay(options: {
       obstacles.push({ x, y, radius: bar.half + 0.12 });
     }
     stepFalls(falls, obstacles, -viewSize().h / 2, dt);
-    if (recoil && stepRecoil(recoil.body, dt)) recoil = null;
-    if (drag || recoil) syncMeshes();
-    if (glow) {
-      glow.left -= dt;
-      setGlow(glow.mesh, Math.max(0, glow.left / 0.18) * 0.16);
-      if (glow.left <= 0) glow = null;
-    }
-    sparks = sparks.filter((burst) => {
-      const done = stepSparkBurst(burst, dt);
-      if (!done) return true;
-      root.remove(burst.root);
-      disposeSparkBurst(burst);
-      return false;
-    });
+    feedback.step(dt);
+    if (drag || feedback.busy()) syncMeshes();
     for (const body of falls) {
       const view = views.find((item) => item.id === body.id);
       if (!view) continue;
@@ -532,8 +456,7 @@ export function mountPlay(options: {
     drag = null;
     dragMoved = false;
     pointerId = null;
-    clearRecoil();
-    clearSparks();
+    feedback.clear();
     board = LEVELS[levelIndex].make();
     build();
   }

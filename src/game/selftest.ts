@@ -3,6 +3,7 @@ import { barById, moveBar, ringById, rotateRing, settle, beginDrag, cancelDrag, 
 
 import { clampAngle, freeArcs, pinForbidden } from './interval';
 import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
+import { dragEffect } from './feedback';
 import { barOverlapAmount, barStillInBuckle } from './volume';
 import { BAR_RECOIL_WORLD, RING_RECOIL_MAX, WOBBLE_CYCLES, WOBBLE_SECONDS, beginRecoil, heldSign, releaseHold, stepRecoil, wobbleOffset } from './recoil';
 
@@ -227,6 +228,16 @@ assert(heldRing !== null && wobbleOffset(heldRing!) === RING_RECOIL_MAX, 'a held
 assert(!stepRecoil(heldRing!, 0.2), 'holding does not finish the wobble');
 releaseHold(heldRing!);
 assert(Math.abs(wobbleOffset(heldRing!) - RING_RECOIL_MAX) < 1e-6, 'release starts from the held angle');
+const blockedRing = dragEffect({ kind: 'ring', moved: false, applied: 0, rejected: 0.2, armed: true, free: 0 });
+assert(blockedRing.type === 'hold', 'a ring that never moved holds');
+const blockedBar = dragEffect({ kind: 'bar', moved: false, applied: 0, rejected: 0.2, armed: true, free: 0 });
+assert(blockedBar.type === 'stop', 'a bar that never moved ends the drag');
+const firstHit = dragEffect({ kind: 'ring', moved: true, applied: 0.01, rejected: 0.2, armed: true, free: 0 });
+assert(firstHit.type === 'hit', 'a moving piece flashes on the hit');
+const stillHeld = dragEffect({ kind: 'ring', moved: true, applied: 0, rejected: 0.2, armed: false, free: 0 });
+assert(stillHeld.type !== 'hit', 'holding the same contact does not flash again');
+const rearm = dragEffect({ kind: 'ring', moved: true, applied: 0.1, rejected: 0, armed: false, free: 0 });
+assert(rearm.type === 'free' && rearm.armed, 'turning away arms the next hit');
 assert(heldSign(null, -0.4) === -1, 'the first block sets the hold direction');
 assert(heldSign(-1, 0.8) === -1, 'a later drag cannot flip the held direction');
 assert(light.settled, 'the wobble ends on the rule pose');

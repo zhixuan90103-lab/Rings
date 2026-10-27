@@ -82,8 +82,8 @@ export type Board = {
 };
 
 export type Drag =
-  | { kind: 'ring'; id: string; theta: number; pointerAngle: number }
-  | { kind: 'bar'; id: string; t: number; pointerT?: number };
+  | { kind: 'ring'; id: string; theta: number; x: number; y: number }
+  | { kind: 'bar'; id: string; t: number; x: number; y: number };
 
 export function ringById(board: Board, id: string): RingBody | undefined {
   return board.rings.find((r) => r.id === id);
@@ -367,31 +367,46 @@ export function beginDrag(board: Board, hit: { kind: 'ring'; id: string } | { ki
   if (hit.kind === 'ring') {
     const ring = ringById(board, hit.id);
     if (!ring) return null;
-    return {
-      kind: 'ring',
-      id: ring.id,
-      theta: ring.theta,
-      pointerAngle: Math.atan2(y - ring.y, x - ring.x),
-    };
+    return { kind: 'ring', id: ring.id, theta: ring.theta, x, y };
   }
   const bar = barById(board, hit.id);
   if (!bar) return null;
-  return { kind: 'bar', id: bar.id, t: bar.t, pointerT: projectBar(bar, x, y) };
+  return { kind: 'bar', id: bar.id, t: bar.t, x, y };
+}
+
+/** Tangential arc at the ring band. Motion inside the hole uses the band radius as the lever. */
+function tangentialStep(cx: number, cy: number, x0: number, y0: number, x1: number, y1: number, lever: number): number {
+  const rx = x0 - cx;
+  const ry = y0 - cy;
+  const lever2 = Math.max(rx * rx + ry * ry, lever * lever);
+  return (rx * (y1 - y0) - ry * (x1 - x0)) / lever2;
 }
 
 export function dragTo(board: Board, drag: Drag, x: number, y: number): void {
   if (drag.kind === 'ring') {
     const ring = ringById(board, drag.id);
     if (!ring) return;
-    const pointerAngle = Math.atan2(y - ring.y, x - ring.x);
-    const delta = signedDelta(drag.pointerAngle, pointerAngle);
-    drag.pointerAngle = pointerAngle;
-    rotateRing(board, ring, delta);
+    const lever = (ring.inner + ring.outer) / 2;
+    const span = Math.hypot(x - drag.x, y - drag.y);
+    const steps = Math.max(1, Math.ceil(span / Math.max(lever, 1e-4)));
+    let x0 = drag.x;
+    let y0 = drag.y;
+    for (let i = 1; i <= steps; i++) {
+      const x1 = drag.x + ((x - drag.x) * i) / steps;
+      const y1 = drag.y + ((y - drag.y) * i) / steps;
+      rotateRing(board, ring, tangentialStep(ring.x, ring.y, x0, y0, x1, y1, lever));
+      x0 = x1;
+      y0 = y1;
+    }
+    drag.x = x;
+    drag.y = y;
     return;
   }
   const bar = barById(board, drag.id);
   if (!bar) return;
-  moveBar(board, bar, drag.t + (projectBar(bar, x, y) - (drag.pointerT ?? drag.t)));
+  moveBar(board, bar, bar.t + (projectBar(bar, x, y) - projectBar(bar, drag.x, drag.y)));
+  drag.x = x;
+  drag.y = y;
 }
 
 export function cancelDrag(board: Board, drag: Drag): void {

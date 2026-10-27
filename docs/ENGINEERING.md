@@ -4,7 +4,7 @@
 
 ## 1. 定位
 
-可复制的 **竖屏 WebGPU 手游底座**：能 dev、能 build、能真机、能震动、桌面≈手机/Pad。当前画面是 [PARTS.md](./PARTS.md) 的零件表：环可转，红棍可滑，银卡扣锁定。关卡规则在代码里，画面先不画关卡。
+可复制的 **竖屏 WebGPU 手游底座**：能 dev、能 build、能真机、能震动、桌面≈手机/Pad。当前画面画 `levelBasic`：环可转，红棍可滑，银卡扣锁定。外形见 [PARTS.md](./PARTS.md)，规则和跟手见 [ROTATE-RINGS.md](./ROTATE-RINGS.md)。
 
 ## 2. 目录
 
@@ -18,7 +18,7 @@ portrait-webgpu-base/
 ├── capacitor.config.ts     # contentInset never · scrollEnabled false
 ├── src/
 │   ├── main.ts             # 舞台、灯光、阴影
-│   ├── game/               # parts.ts 零件；play.ts 摆放；规则见 ROTATE-RINGS.md
+│   ├── game/               # 零件、关卡、跟手、掉落。规则见 ROTATE-RINGS.md
 │   ├── create-renderer.ts
 │   ├── style.css
 │   ├── adapt/
@@ -71,7 +71,7 @@ offset = 居中
 renderer.setSize(390, 844)          // 始终设计分辨率
 ```
 
-触控：`clientToDesign`；letterbox 外忽略。
+触控：画布矩形换到设计坐标，再换到正交视口。按下忽略设计画面外。拖动中指针捕获继续跟踪，滑出画面不丢。跟手公式见 [ROTATE-RINGS.md](./ROTATE-RINGS.md) §4。
 
 ## 5. Safe Area
 

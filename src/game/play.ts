@@ -177,12 +177,12 @@ export function mountPlay(options: {
     }
   }
 
-  function worldFromEvent(event: PointerEvent): { x: number; y: number } | null {
+  function worldFromEvent(event: PointerEvent, clampToDesign: boolean): { x: number; y: number } | null {
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
     const dx = ((event.clientX - rect.left) / rect.width) * DESIGN_WIDTH;
     const dy = ((event.clientY - rect.top) / rect.height) * DESIGN_HEIGHT;
-    if (!isInDesignBounds(dx, dy)) return null;
+    if (clampToDesign && !isInDesignBounds(dx, dy)) return null;
     return designToWorld(dx, dy);
   }
 
@@ -204,7 +204,7 @@ export function mountPlay(options: {
 
   function onPointerDown(event: PointerEvent): void {
     if (pointerId !== null) return;
-    const world = worldFromEvent(event);
+    const world = worldFromEvent(event, true);
     if (!world) return;
     const hit = pickByRay(world);
     if (!hit) return;
@@ -217,9 +217,13 @@ export function mountPlay(options: {
 
   function onPointerMove(event: PointerEvent): void {
     if (event.pointerId !== pointerId || !drag) return;
-    const world = worldFromEvent(event);
-    if (!world) return;
-    dragTo(board, drag, world.x, world.y);
+    const samples = event.getCoalescedEvents?.() ?? [];
+    const events = samples.length > 0 ? samples : [event];
+    for (const sample of events) {
+      const world = worldFromEvent(sample, false);
+      if (!world) continue;
+      dragTo(board, drag, world.x, world.y);
+    }
     syncMeshes();
   }
 

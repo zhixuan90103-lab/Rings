@@ -25,7 +25,7 @@
 | iOS 注入 | `scripts/bootstrap-ios.mjs` |
 | 音效方案（未实现） | `docs/AUDIO.md` |
 | 画面零件 | `src/game/parts.ts`，规范见 `docs/PARTS.md` |
-| 当前操作 | `src/game/play.ts`。环绕自己的中心转，红棍水平滑动，银卡扣锁定 |
+| 当前操作 | `src/game/play.ts` 与 `board.ts`。环按切向弧长绕自己的中心转，红棍沿长边滑动，银卡扣锁定 |
 | 规则 | `docs/ROTATE-RINGS.md`。当前画面是 `levelBasic` |
 
 ## DOM（勿拆）
@@ -65,7 +65,7 @@ npm run ios
 ## 业务怎么加
 
 - 零件外形和组合：改 `src/game/parts.ts`，并同步 `docs/PARTS.md`。已定稿的尺寸、倒角、颜色不要跟着操作改  
-- 操作：只改 `src/game/play.ts`。环绕环心转，胶囊棍水平滑，银卡扣不进拖动  
+- 操作：`src/game/play.ts` 收指针，`src/game/board.ts` 算切向转角和沿长边的位移。银卡扣不进拖动。跟手以 `docs/ROTATE-RINGS.md` §4 为准  
 - 规则：`docs/ROTATE-RINGS.md` 与 `src/game/` 里的关卡逻辑。当前画面是 `levelBasic`  
 - 保留：adapt / create-renderer / haptics / plugins / `base`  
 - 触控：`clientToDesign` + 忽略 letterbox 外  

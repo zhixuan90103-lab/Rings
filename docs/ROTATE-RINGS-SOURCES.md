@@ -1,6 +1,6 @@
 # Rotate Rings · 有效来源
 
-日期：2026-10-26  
+日期：2026-10-27  
 方法规范：[ROTATE-RINGS.md](./ROTATE-RINGS.md)  
 范围：开口环、闭合环与长条滑杆。不含松果、道具。  
 规则以实机为准：拖动只改角度，抬手才结算，拖动中即使已经对齐也不离场。解开后物理掉落，不原地消失。
@@ -16,12 +16,14 @@
 | 拆解重点摘要（同日对话） | 不能删的七条：单目标、绕心转、缺口对齐、未解则停、自动离场、清盘、顺序是解 |
 | [MDN Pointer Events](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events) | `pointerdown` 起捕获，`pointerup` / `pointercancel` 结束。只用于手势会话 |
 | [MDN `setPointerCapture`](https://developer.mozilla.org/en-US/docs/Web/API/Element/setPointerCapture) | 手指滑出元素后仍收到移动 |
+| [MDN `getCoalescedEvents`](https://developer.mozilla.org/en-US/docs/Web/API/PointerEvent/getCoalescedEvents) | 一次 `pointermove` 里被合并的中间点按顺序补上 |
+| [Apple HIG · Gestures](https://developer.apple.com/design/human-interface-guidelines/gestures) | 拖移是直接操作，反馈跟上手指。系统「旋转」是双指，不是单指绕圆心 |
 
 ## 实现
 
 | 来源 | 钉住什么 |
 |------|----------|
-| [MDN `Math.atan2`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/atan2) | 跟手增量。返回 [-π, π]，参数是 `(y, x)` |
+| [MDN `Math.atan2`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/atan2) | 缺口是否盖住关节，以及网格的 `rotation.z`。不拿它做跟手增量 |
 | [Three.js Raycaster](https://threejs.org/docs/pages/Raycaster.html) | 点选。`intersectObjects` 按距离从近到远 |
 | [three.js `Raycaster.js`](https://github.com/mrdoob/three.js/blob/master/src/core/Raycaster.js) | 排序实现比较 `distance` |
 | [rawify/Angles.js](https://github.com/rawify/Angles.js) | `between(n, a, b)`：角可以跨过 0，用来判断缺口是否盖住关节 |
@@ -43,3 +45,5 @@
 写在 [ROTATE-RINGS.md](./ROTATE-RINGS.md)。限位销只挡角度。`stopHalf = 0` 的限位销只作银箍，不挡、不留件。阻挡销和关节才是可删连接。卡扣由滑杆进窗口解除；卡扣点在环心时只留件，不收紧转角。闭合环靠连锁离场。解开后才做物理掉落，掉落物不推动仍上锁的零件。
 
 同日后续定案，仍无外部来源：画面上的交叉必须是规则上的卡住；关卡要有拆解先后，后一根杆被前面还在盘上的环挡住。抬手未解开则停在原处。吸附容差、重叠命中的产品规则，本表没有来源。
+
+2026-10-27 跟手定案：圆环用切向弧长，杠杆是 `max(|r|, 环带半径)`。长条只加沿长边的位移。被挡住的位移丢掉，不追手指。按下只收设计画面内的点，拖动中滑出画面仍跟踪。

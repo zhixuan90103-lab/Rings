@@ -91,6 +91,7 @@ async function boot(): Promise<void> {
   scene.add(ground);
 
   let latestLayout: StageLayout | null = null;
+  let advanceLevel = (): void => {};
   const play = mountPlay({
     renderer,
     scene,
@@ -113,6 +114,7 @@ async function boot(): Promise<void> {
         void haptics.impact('light');
       }
     },
+    onCleared: () => advanceLevel(),
   });
   let preview: DevicePreviewController;
 
@@ -146,7 +148,7 @@ async function boot(): Promise<void> {
 
   // Optional: document.body.classList.add('debug-safe-area')
 
-  mountEditor(play, setStatus);
+  advanceLevel = mountEditor(play, setStatus).advance;
 
   if (haptics.isNativeIos()) {
     setLog(

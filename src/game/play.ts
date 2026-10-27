@@ -27,10 +27,26 @@ import {
 import { signedDelta } from './angle';
 import { fallFromBar, fallFromRing, fallFromRivet, stepFalls, type FallBody } from './fall';
 import { LEVELS } from './levels';
+import level1 from '../../public/levels/1.json';
 import { dragEffect, mountFeedback } from './feedback';
 import { strikePoint } from './volume';
-
-const VIEW_H = 10;
+import {
+  boardBounds,
+  cameraForFit,
+  cameraForPinch,
+  choosePinchLock,
+  clampCamera,
+  largestRing,
+  zoomCap,
+  type PinchLock,
+  FRAME_MARGIN,
+  frameFor,
+  viewSize,
+  worldFromDesign,
+  type Aabb,
+  type Frame,
+  type UsableRect,
+} from './camera';
 
 export type PlayHandles = {
   resize: () => void;
@@ -43,6 +59,7 @@ export type PlayHandles = {
   pointerWorld: (event: PointerEvent, clampToDesign: boolean) => { x: number; y: number } | null;
   pickAt: (world: { x: number; y: number }) => { kind: 'ring'; id: string } | { kind: 'bar'; id: string } | null;
   select: (id: string | null) => void;
+  frame: () => void;
 };
 
 type PieceView = {
@@ -52,16 +69,7 @@ type PieceView = {
   falling: boolean;
 };
 
-function viewSize(): { w: number; h: number } {
-  return { w: VIEW_H * (DESIGN_WIDTH / DESIGN_HEIGHT), h: VIEW_H };
-}
 
-function designToWorld(dx: number, dy: number): { x: number; y: number } {
-  const { w, h } = viewSize();
-  const nx = (dx / DESIGN_WIDTH) * 2 - 1;
-  const ny = -((dy / DESIGN_HEIGHT) * 2 - 1);
-  return { x: nx * (w / 2), y: ny * (h / 2) };
-}
 
 function plastic(color: number): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.02 });
@@ -109,8 +117,9 @@ export function mountPlay(options: {
   getLayout: () => StageLayout | null;
   onStatus: (text: string) => void;
   onRelease: () => void;
+  onCleared?: () => void;
 }): PlayHandles {
-  const { scene, camera, canvas, onStatus, onRelease } = options;
+  const { scene, camera, canvas, onStatus, onRelease, onCleared } = options;
   const root = new THREE.Group();
   scene.add(root);
 
@@ -123,6 +132,23 @@ export function mountPlay(options: {
   let drag: Drag | null = null;
   let dragMoved = false;
   let pointerId: number | null = null;
+  const fingers = new Map<number, { dx: number; dy: number }>();
+  let pinch: {
+    zoom: number;
+    dist: number;
+    x: number;
+    y: number;
+    midX: number;
+    midY: number;
+    lock: PinchLock | null;
+  } | null = null;
+  let hold = false;
+  let fitted = true;
+  let awaitingNext = false;
+  let clearLeft = 0;
+  let bounds: Aabb = { minX: -1, minY: -1, maxX: 1, maxY: 1 };
+  let limits: Frame = frameFor(bounds, { left: FRAME_MARGIN, top: FRAME_MARGIN, right: DESIGN_WIDTH - FRAME_MARGIN, bottom: DESIGN_HEIGHT - FRAME_MARGIN });
+  let chromeKey = '';
   const feedback = mountFeedback(root);
   let falls: FallBody[] = [];
   let last = performance.now();
@@ -166,13 +192,69 @@ export function mountPlay(options: {
     halo.scale.set(bar.grip + 0.12, bar.half + 0.1, 1);
   }
 
+  function designToWorld(dx: number, dy: number): { x: number; y: number } {
+    return worldFromDesign(dx, dy, camera.position.x, camera.position.y, camera.zoom);
+  }
+
+  function applyCamera(x: number, y: number, zoom: number): void {
+    camera.position.set(x, y, 12);
+    camera.zoom = zoom;
+    camera.lookAt(x, y, 0);
+    camera.updateProjectionMatrix();
+  }
+
+  function usableRect(): UsableRect {
+    const stage = canvas.parentElement;
+    const stageRect = stage?.getBoundingClientRect();
+    let top = FRAME_MARGIN;
+    let bottom = DESIGN_HEIGHT - FRAME_MARGIN;
+    const left = FRAME_MARGIN;
+    const right = DESIGN_WIDTH - FRAME_MARGIN;
+    if (!stageRect || stageRect.width <= 0 || stageRect.height <= 0) {
+      return { left, top, right, bottom };
+    }
+    const designY = (clientY: number) => ((clientY - stageRect.top) / stageRect.height) * DESIGN_HEIGHT;
+    const header = document.querySelector('#ui-root header');
+    const dock = document.querySelector('#dock');
+    if (header) top = Math.max(top, designY(header.getBoundingClientRect().bottom) + FRAME_MARGIN);
+    if (dock) {
+      const dockRect = dock.getBoundingClientRect();
+      if (dockRect.height > 0) bottom = Math.min(bottom, designY(dockRect.top) - FRAME_MARGIN);
+    }
+    if (bottom - top < 80) return { left, top: FRAME_MARGIN, right, bottom: DESIGN_HEIGHT - FRAME_MARGIN };
+    return { left, top, right, bottom };
+  }
+
+  function refreshLimits(refit: boolean): void {
+    const usable = usableRect();
+    limits = frameFor(bounds, usable);
+    const reference = level1 as Board;
+    const referenceBounds = boardBounds(reference);
+    const referenceZoom = frameFor(referenceBounds, usable).minZoom;
+    limits.maxZoom = zoomCap(largestRing(board), limits.minZoom, largestRing(reference), referenceZoom);
+    if (refit) {
+      const fit = cameraForFit(bounds, limits);
+      applyCamera(fit.x, fit.y, fit.zoom);
+      fitted = true;
+      return;
+    }
+    const next = clampCamera(camera.position.x, camera.position.y, camera.zoom, bounds, limits);
+    applyCamera(next.x, next.y, next.zoom);
+  }
+
   function resize(): void {
     const { w, h } = viewSize();
     camera.left = -w / 2;
     camera.right = w / 2;
     camera.top = h / 2;
     camera.bottom = -h / 2;
-    camera.updateProjectionMatrix();
+    refreshLimits(fitted);
+    chromeKey = chromeStamp();
+  }
+
+  function chromeStamp(): string {
+    const rect = usableRect();
+    return `${Math.round(rect.top)}:${Math.round(rect.bottom)}`;
   }
 
   function clearViews(): void {
@@ -206,6 +288,7 @@ export function mountPlay(options: {
     clearViews();
     syncPins(board);
     showLevel();
+    bounds = boardBounds(board);
     placeHalo();
   }
 
@@ -277,9 +360,9 @@ export function mountPlay(options: {
   }
 
   function pickByRay(world: { x: number; y: number }): { kind: 'ring'; id: string } | { kind: 'bar'; id: string } | null {
-    const { w, h } = viewSize();
-    const ndc = new THREE.Vector2((world.x / (w / 2)), (world.y / (h / 2)));
-    raycaster.setFromCamera(ndc, camera);
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    raycaster.set(new THREE.Vector3(world.x, world.y, camera.position.z), dir);
     const meshes = views.filter((view) => !view.falling).map((view) => view.mesh);
     const hits = raycaster.intersectObjects(meshes, true);
     if (hits.length > 0) {
@@ -292,10 +375,78 @@ export function mountPlay(options: {
     return null;
   }
 
+  function rememberFinger(event: PointerEvent): { dx: number; dy: number } | null {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const dx = ((event.clientX - rect.left) / rect.width) * DESIGN_WIDTH;
+    const dy = ((event.clientY - rect.top) / rect.height) * DESIGN_HEIGHT;
+    return { dx, dy };
+  }
+
+  function dropPiece(cancel: boolean): void {
+    if (drag && cancel) cancelDrag(board, drag);
+    if (pointerId !== null && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
+    drag = null;
+    dragMoved = false;
+    pointerId = null;
+    feedback.clearPose();
+    syncMeshes();
+  }
+
+  function beginPinch(): void {
+    const pts = [...fingers.values()];
+    if (pts.length !== 2) return;
+    pinch = {
+      zoom: camera.zoom,
+      dist: Math.hypot(pts[0].dx - pts[1].dx, pts[0].dy - pts[1].dy),
+      x: camera.position.x,
+      y: camera.position.y,
+      midX: (pts[0].dx + pts[1].dx) / 2,
+      midY: (pts[0].dy + pts[1].dy) / 2,
+      lock: null,
+    };
+  }
+
+  function applyPinch(): void {
+    if (!pinch) return;
+    const pts = [...fingers.values()];
+    if (pts.length !== 2 || pinch.dist < 1e-3) return;
+    const dist = Math.hypot(pts[0].dx - pts[1].dx, pts[0].dy - pts[1].dy);
+    const midX = (pts[0].dx + pts[1].dx) / 2;
+    const midY = (pts[0].dy + pts[1].dy) / 2;
+    const midShift = Math.hypot(midX - pinch.midX, midY - pinch.midY);
+    const distShift = Math.abs(dist - pinch.dist);
+    pinch.lock = choosePinchLock(midShift, distShift, pinch.lock);
+    if (!pinch.lock) return;
+    const zooming = pinch.lock === 'zoom';
+    const zoom = zooming
+      ? Math.min(limits.maxZoom, Math.max(limits.minZoom, pinch.zoom * (dist / pinch.dist)))
+      : pinch.zoom;
+    const shifted = cameraForPinch(pinch, zooming ? pinch.midX : midX, zooming ? pinch.midY : midY, zoom);
+    const next = clampCamera(shifted.x, shifted.y, zoom, bounds, limits);
+    applyCamera(next.x, next.y, next.zoom);
+    fitted = false;
+  }
+
   function onPointerDown(event: PointerEvent): void {
-    if (editing || pointerId !== null) return;
-    const world = worldFromEvent(event, true);
-    if (!world) return;
+    if (editing) return;
+    const point = rememberFinger(event);
+    if (!point || !isInDesignBounds(point.dx, point.dy)) return;
+    fingers.set(event.pointerId, point);
+    if (fingers.size > 2) {
+      dropPiece(true);
+      pinch = null;
+      hold = true;
+      return;
+    }
+    if (fingers.size === 2) {
+      dropPiece(true);
+      hold = true;
+      beginPinch();
+      return;
+    }
+    if (hold || pointerId !== null) return;
+    const world = designToWorld(point.dx, point.dy);
     const hit = pickByRay(world);
     if (!hit) return;
     const next = beginDrag(board, hit, world.x, world.y);
@@ -320,7 +471,15 @@ export function mountPlay(options: {
   }
 
   function onPointerMove(event: PointerEvent): void {
-    if (event.pointerId !== pointerId || !drag) return;
+    if (fingers.has(event.pointerId)) {
+      const point = rememberFinger(event);
+      if (point) fingers.set(event.pointerId, point);
+      if (pinch) {
+        applyPinch();
+        return;
+      }
+    }
+    if (hold || event.pointerId !== pointerId || !drag) return;
     if (drag.kind === 'ring' && feedback.holding(drag.id)) {
       syncMeshes();
       return;
@@ -400,6 +559,7 @@ export function mountPlay(options: {
       }
       buildMarkersOnly();
       if (left.length > 0) onRelease();
+      if (board.rings.length === 0 && board.bars.length === 0) awaitingNext = true;
     }
     drag = null;
     dragMoved = false;
@@ -491,12 +651,20 @@ export function mountPlay(options: {
     }
   }
 
+  function releaseFinger(event: PointerEvent, cancel: boolean): void {
+    fingers.delete(event.pointerId);
+    if (pinch && fingers.size !== 2) pinch = null;
+    if (fingers.size === 0) hold = false;
+    else if (pinch === null && fingers.size > 0) hold = true;
+    finishPointer(event, cancel);
+  }
+
   function onPointerUp(event: PointerEvent): void {
-    finishPointer(event, false);
+    releaseFinger(event, false);
   }
 
   function onPointerCancel(event: PointerEvent): void {
-    finishPointer(event, true);
+    releaseFinger(event, true);
   }
 
   canvas.addEventListener('pointerdown', onPointerDown);
@@ -521,6 +689,11 @@ export function mountPlay(options: {
       if (rivet.body.dead) rivet.mesh.visible = false;
     }
     feedback.step(dt);
+    const stamp = chromeStamp();
+    if (stamp !== chromeKey) {
+      chromeKey = stamp;
+      refreshLimits(fitted);
+    }
     if (drag || feedback.busy()) syncMeshes();
     for (const body of falls) {
       const view = views.find((item) => item.id === body.id);
@@ -528,6 +701,16 @@ export function mountPlay(options: {
       view.mesh.position.set(body.x, body.y, 0.1);
       view.mesh.rotation.z = body.theta;
       if (body.dead) view.mesh.visible = false;
+    }
+    if (awaitingNext && !editing) {
+      clearLeft += dt;
+      if (clearLeft >= 1) {
+        awaitingNext = false;
+        clearLeft = 0;
+        onCleared?.();
+      }
+    } else {
+      clearLeft = 0;
     }
   }
 
@@ -541,9 +724,15 @@ export function mountPlay(options: {
     drag = null;
     dragMoved = false;
     pointerId = null;
+    fingers.clear();
+    pinch = null;
+    hold = false;
+    awaitingNext = false;
+    clearLeft = 0;
     feedback.clear();
     board = LEVELS[levelIndex].make();
     build();
+    refreshLimits(true);
     onStatus(LEVELS[levelIndex]?.name ?? '关卡');
   }
 
@@ -556,7 +745,13 @@ export function mountPlay(options: {
     pointerId = null;
     feedback.clear();
     board = next;
+    fingers.clear();
+    pinch = null;
+    hold = false;
+    awaitingNext = false;
+    clearLeft = 0;
     build();
+    refreshLimits(false);
   }
 
   function pose(next: Board): void {
@@ -573,11 +768,17 @@ export function mountPlay(options: {
     copy: () => structuredClone(board),
     setEditing: (on: boolean) => {
       editing = on;
+      fingers.clear();
+      pinch = null;
+      hold = false;
+      awaitingNext = false;
+      clearLeft = 0;
       drag = null;
       dragMoved = false;
       pointerId = null;
       placeHalo();
     },
+    frame: () => refreshLimits(true),
     pointerWorld: worldFromEvent,
     pickAt: pickByRay,
     select: (id: string | null) => {

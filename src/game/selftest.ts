@@ -1,3 +1,5 @@
+import { boardBounds, cameraForFit, cameraForPinch, choosePinchLock, clampCamera, designNdc, frameFor, worldFromDesign, zoomCap } from './camera';
+import { connectorReach } from './parts';
 import { gapCovers, signedDelta } from './angle';
 import { barById, moveBar, ringById, rotateRing, settle, beginDrag, cancelDrag, dragTo, ringFreeArcs } from './board';
 
@@ -341,5 +343,41 @@ const probe = (radius: number) => {
 assert(probe(capMid), 'the gap cap center is solid');
 assert(probe(capRing.outer - 0.01), 'the drawn cap still reaches the outer edge');
 assert(!probe(capRing.outer + 0.02), 'the gap cap does not extend past the band');
+
+const topLeft = designNdc(0, 0);
+assert(topLeft.x === -1 && topLeft.y === 1, 'design top-left is world-up NDC');
+const stemReach = connectorReach(0.648, 0.648 * 0.28, 0.36244);
+assert(stemReach > 0.648, 'a connector reaches past the ring');
+const box = boardBounds(LEVELS[0].make());
+assert(box.maxX > box.minX && box.maxY > box.minY, 'a level has a bounds box');
+const usable = { left: 24, top: 80, right: 366, bottom: 760 };
+const fit = frameFor(box, usable);
+const cam = cameraForFit(box, fit);
+const center = worldFromDesign((usable.left + usable.right) / 2, (usable.top + usable.bottom) / 2, cam.x, cam.y, cam.zoom);
+assert(Math.abs(center.x - (box.minX + box.maxX) / 2) < 1e-6, 'fit puts the bounds on the usable center x');
+assert(Math.abs(center.y - (box.minY + box.maxY) / 2) < 1e-6, 'fit puts the bounds on the usable center y');
+const focal = worldFromDesign(195, 422, cam.x, cam.y, cam.zoom);
+const zoomed = cam.zoom * 2;
+const shifted = worldFromDesign(195, 422, cam.x, cam.y, zoomed);
+const kept = worldFromDesign(195, 422, cam.x + focal.x - shifted.x, cam.y + focal.y - shifted.y, zoomed);
+assert(Math.abs(kept.x - focal.x) < 1e-6 && Math.abs(kept.y - focal.y) < 1e-6, 'pinch keeps the midpoint world point');
+const slid = cameraForPinch({ x: cam.x, y: cam.y, zoom: cam.zoom, midX: 180, midY: 400 }, 240, 400, cam.zoom);
+const followed = worldFromDesign(240, 400, slid.x, slid.y, cam.zoom);
+const origin = worldFromDesign(180, 400, cam.x, cam.y, cam.zoom);
+assert(Math.abs(followed.x - origin.x) < 1e-6 && Math.abs(followed.y - origin.y) < 1e-6, 'two fingers drag the point under their midpoint');
+assert(choosePinchLock(4, 3, null) === null, 'a small two-finger motion does not lock yet');
+assert(choosePinchLock(8, 20, null) === 'zoom', 'a wider pinch locks to zoom');
+assert(choosePinchLock(30, 20, 'zoom') === 'zoom', 'a locked zoom ignores a later pan');
+assert(choosePinchLock(30, 10, null) === 'pan', 'a sliding pair locks to pan');
+assert(choosePinchLock(4, 40, 'pan') === 'pan', 'a locked pan ignores a later pinch');
+assert(zoomCap(0.648, 0.4, 0.648, 1) === 1, 'a smaller level can zoom until its ring matches level 1');
+assert(zoomCap(0.648, 1.2, 0.648, 1) === 1.2, 'a level already larger than level 1 does not zoom in');
+const tight = clampCamera(cam.x + 5, cam.y + 5, fit.minZoom, box, fit);
+assert(tight.zoom === fit.minZoom, 'the edge clamp does not change zoom');
+const inside = clampCamera(100, -100, fit.maxZoom, box, fit);
+assert(inside.zoom === fit.maxZoom, 'the edge clamp keeps the pinched zoom');
+const seen = worldFromDesign((usable.left + usable.right) / 2, (usable.top + usable.bottom) / 2, inside.x, inside.y, inside.zoom);
+assert(seen.x >= box.minX - 1e-6 && seen.x <= box.maxX + 1e-6, 'zoomed pan stays inside the bounds');
+assert(seen.y >= box.minY - 1e-6 && seen.y <= box.maxY + 1e-6, 'zoomed pan stays inside the bounds');
 
 console.log('rotate-rings selftest ok');

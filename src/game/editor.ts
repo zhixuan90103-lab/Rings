@@ -29,10 +29,10 @@ type Selection =
  * Level editor on #ui-root. Edit mode drags pieces. Play mode uses the puzzle rules.
  * Angle 0 is +X and increases counterclockwise, the same θ the meshes use.
  */
-export function mountEditor(play: PlayHandles, setStatus: (text: string) => void): void {
+export function mountEditor(play: PlayHandles, setStatus: (text: string) => void): { advance: () => void } {
   const levelHost = document.getElementById('levels');
   const editorPanel = document.getElementById('editor');
-  if (!levelHost || !editorPanel) return;
+  if (!levelHost || !editorPanel) return { advance: () => {} };
 
   let level = 1;
   let tool: Tool = 'move';
@@ -330,6 +330,7 @@ export function mountEditor(play: PlayHandles, setStatus: (text: string) => void
     authored = await loadLevel(index);
     play.setEditing(true);
     commit();
+    play.frame();
     setStatus(`第 ${level} 关`);
   }
 
@@ -338,6 +339,7 @@ export function mountEditor(play: PlayHandles, setStatus: (text: string) => void
       seatConnectors(authored);
       centerBoard(authored);
       commit();
+      play.frame();
       await saveLevel(level, authored);
       setStatus(`已保存第 ${level} 关，已对准并放到画面中心`);
     } catch (error) {
@@ -496,8 +498,17 @@ export function mountEditor(play: PlayHandles, setStatus: (text: string) => void
     }
   }
 
+  const advance = (): void => {
+    if (mode === 'edit') return;
+    if (level >= LEVEL_COUNT) {
+      setStatus('已完成');
+      return;
+    }
+    void open(level + 1);
+  };
+
   const canvas = document.querySelector('#stage canvas');
-  if (!(canvas instanceof HTMLCanvasElement)) return;
+  if (!(canvas instanceof HTMLCanvasElement)) return { advance };
 
   canvas.addEventListener('pointerdown', (event) => {
     if (mode !== 'edit') return;
@@ -572,4 +583,6 @@ export function mountEditor(play: PlayHandles, setStatus: (text: string) => void
   });
 
   void open(1);
+
+  return { advance };
 }

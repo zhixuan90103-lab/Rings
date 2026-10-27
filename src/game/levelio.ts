@@ -64,11 +64,48 @@ export function colorsClash(board: Board, a: string, b: string): boolean {
   return left !== undefined && left === right;
 }
 
+function hexToHue(color: number): number {
+  const r = ((color >> 16) & 255) / 255;
+  const g = ((color >> 8) & 255) / 255;
+  const b = (color & 255) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const span = max - min;
+  if (span === 0) return 0;
+  const hue = max === r ? (g - b) / span + (g < b ? 6 : 0) : max === g ? (b - r) / span + 2 : (r - g) / span + 4;
+  return hue * 60;
+}
+
+function hueDistance(left: number, right: number): number {
+  const gap = Math.abs(hexToHue(left) - hexToHue(right)) % 360;
+  return Math.min(gap, 360 - gap);
+}
+
+function hslToHex(hue: number, saturation: number, lightness: number): number {
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const section = hue / 60;
+  const x = chroma * (1 - Math.abs((section % 2) - 1));
+  const match = lightness - chroma / 2;
+  const rgb = section < 1 ? [chroma, x, 0] : section < 2 ? [x, chroma, 0] : section < 3 ? [0, chroma, x] : section < 4 ? [0, x, chroma] : section < 5 ? [x, 0, chroma] : [chroma, 0, x];
+  const channel = (value: number) => Math.round((value + match) * 255);
+  return (channel(rgb[0]) << 16) | (channel(rgb[1]) << 8) | channel(rgb[2]);
+}
+
 export function freshColor(board: Board): number {
   const used = new Set<number>();
   for (const ring of board.rings) if (ring.color !== undefined) used.add(ring.color);
   for (const bar of board.bars) if (bar.color !== undefined) used.add(bar.color);
-  return PALETTE.find((color) => !used.has(color)) ?? PALETTE[0];
+  const free = PALETTE.find((color) => !used.has(color));
+  if (free !== undefined) return free;
+  const taken = [...used];
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const base = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+    const sign = Math.random() < 0.5 ? -1 : 1;
+    const hue = (hexToHue(base) + sign * (20 + Math.random() * 24) + 360) % 360;
+    const color = hslToHex(hue, 0.66 + Math.random() * 0.14, 0.52 + Math.random() * 0.08);
+    if (taken.every((existing) => hueDistance(existing, color) > 14)) return color;
+  }
+  return hslToHex(Math.random() * 360, 0.7, 0.56);
 }
 
 export function makeRing(board: Board): RingBody {

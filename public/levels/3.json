@@ -1,7 +1,251 @@
 {
-  "rings": [],
+  "rings": [
+    {
+      "id": "ring-1",
+      "kind": "ring",
+      "x": -0.7717404266029674,
+      "y": 2.10565797031043,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 0,
+      "color": 3844351,
+      "connectors": []
+    },
+    {
+      "id": "ring-2",
+      "kind": "ring",
+      "x": 1.896977101346808,
+      "y": -1.9007728255612526,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 5.1097114400057775,
+      "color": 4050035,
+      "connectors": []
+    },
+    {
+      "id": "ring-3",
+      "kind": "ring",
+      "x": -0.9977297314509695,
+      "y": -0.9406726445797955,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 2.7598320808978722,
+      "color": 16733772,
+      "connectors": [
+        {
+          "angle": 4.886921905584122,
+          "stem": 0.37200466661837106,
+          "target": "ring-9"
+        }
+      ]
+    },
+    {
+      "id": "ring-4",
+      "kind": "ring",
+      "x": 0.9652219831419903,
+      "y": -0.6733759352979374,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 1.1729182039165351,
+      "color": 16747050,
+      "connectors": [
+        {
+          "angle": -2.0943951023931953,
+          "stem": 0.37200466661837106,
+          "target": "ring-2"
+        }
+      ]
+    },
+    {
+      "id": "ring-5",
+      "kind": "ring",
+      "x": 0.8576301692632056,
+      "y": 0.65842166811767,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 4.286408642741832,
+      "color": 11037695,
+      "connectors": [
+        {
+          "angle": 3.6651914291880923,
+          "stem": 0.37200466661837106,
+          "target": "ring-10"
+        }
+      ]
+    },
+    {
+      "id": "ring-7",
+      "kind": "ring",
+      "x": 0.14302203263314262,
+      "y": -1.976701668916429,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 3.9750627494362947,
+      "color": 11330370,
+      "connectors": [
+        {
+          "angle": 3.3161255787892263,
+          "stem": 0.37200466661837106,
+          "target": "ring-4"
+        },
+        {
+          "angle": -1.5707963267948966,
+          "stem": 0.37200466661837106,
+          "target": "ring-3"
+        }
+      ]
+    },
+    {
+      "id": "ring-8",
+      "kind": "ring",
+      "x": -1.896977101346808,
+      "y": -2.192081807988929,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 4.089296601856155,
+      "color": 5170239,
+      "connectors": [
+        {
+          "angle": 3.141592653589793,
+          "stem": 0.37200466661837106,
+          "target": "ring-3"
+        }
+      ]
+    },
+    {
+      "id": "ring-9",
+      "kind": "ring",
+      "x": -0.6806732797662609,
+      "y": 0.5673545212809634,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 3.2007233700670437,
+      "color": 5127131,
+      "connectors": [
+        {
+          "angle": 4.71238898038469,
+          "stem": 0.37200466661837106,
+          "target": "ring-1"
+        },
+        {
+          "angle": 3.141592653589793,
+          "stem": 0.37200466661837106,
+          "target": "ring-5"
+        }
+      ]
+    },
+    {
+      "id": "ring-10",
+      "kind": "ring",
+      "x": 0.7074392843899884,
+      "y": 2.192081807988929,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 3.0531759947142527,
+      "color": 3333056,
+      "connectors": []
+    }
+  ],
   "bars": [],
-  "pins": [],
+  "pins": [
+    {
+      "id": "catch:ring-3:0",
+      "ownerId": "ring-3",
+      "localAngle": 4.886921905584122,
+      "localRadius": 0.983716666618371,
+      "x": -0.7953323333660255,
+      "y": 0.021997482426960646,
+      "role": "catch",
+      "limitRingId": null,
+      "stopHalf": 0
+    },
+    {
+      "id": "catch:ring-4:0",
+      "ownerId": "ring-4",
+      "localAngle": -2.0943951023931953,
+      "localRadius": 0.983716666618371,
+      "x": 1.5600208291358877,
+      "y": -1.4569018206310815,
+      "role": "catch",
+      "limitRingId": null,
+      "stopHalf": 0
+    },
+    {
+      "id": "catch:ring-5:0",
+      "ownerId": "ring-5",
+      "localAngle": 3.6651914291880923,
+      "localRadius": 0.983716666618371,
+      "x": 0.7617537278506726,
+      "y": 1.637454960792045,
+      "role": "catch",
+      "limitRingId": null,
+      "stopHalf": 0
+    },
+    {
+      "id": "catch:ring-7:0",
+      "ownerId": "ring-7",
+      "localAngle": 3.3161255787892263,
+      "localRadius": 0.983716666618371,
+      "x": 0.6678848127605289,
+      "y": -1.1447055498030583,
+      "role": "catch",
+      "limitRingId": null,
+      "stopHalf": 0
+    },
+    {
+      "id": "catch:ring-7:1",
+      "ownerId": "ring-7",
+      "localAngle": -1.5707963267948966,
+      "localRadius": 0.983716666618371,
+      "x": -0.5851927306514537,
+      "y": -1.3153381238694415,
+      "role": "catch",
+      "limitRingId": null,
+      "stopHalf": 0
+    },
+    {
+      "id": "catch:ring-8:0",
+      "ownerId": "ring-8",
+      "localAngle": 3.141592653589793,
+      "localRadius": 0.983716666618371,
+      "x": -1.3229300288632018,
+      "y": -1.3932273539387807,
+      "role": "catch",
+      "limitRingId": null,
+      "stopHalf": 0
+    },
+    {
+      "id": "catch:ring-9:0",
+      "ownerId": "ring-9",
+      "localAngle": 4.71238898038469,
+      "localRadius": 0.983716666618371,
+      "x": -0.7388072602382876,
+      "y": 1.5493519349726887,
+      "role": "catch",
+      "limitRingId": null,
+      "stopHalf": 0
+    },
+    {
+      "id": "catch:ring-9:1",
+      "ownerId": "ring-9",
+      "localAngle": 3.141592653589793,
+      "localRadius": 0.983716666618371,
+      "x": 0.3013241339254643,
+      "y": 0.6254885017529902,
+      "role": "catch",
+      "limitRingId": null,
+      "stopHalf": 0
+    }
+  ],
   "latches": [],
   "volumes": true
 }

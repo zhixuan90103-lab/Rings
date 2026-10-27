@@ -230,6 +230,16 @@ export function mountPlay(options: {
       const pinId = marker.userData.pinId as string | undefined;
       const pin = board.pins.find((item) => item.id === pinId);
       if (pin) marker.position.set(pin.x, pin.y, 0.2);
+      if (!editing) continue;
+      const barId = marker.userData.barId as string | undefined;
+      const bar = barId ? barById(board, barId) : undefined;
+      if (!bar) continue;
+      marker.position.set(
+        bar.x0 + (bar.x1 - bar.x0) * bar.t,
+        bar.y0 + (bar.y1 - bar.y0) * bar.t,
+        0.2,
+      );
+      marker.rotation.z = Math.atan2(bar.y1 - bar.y0, bar.x1 - bar.x0);
     }
     applyFeedback();
     placeHalo();

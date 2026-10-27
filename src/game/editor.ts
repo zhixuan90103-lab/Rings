@@ -50,7 +50,17 @@ export function mountEditor(play: PlayHandles, setStatus: (text: string) => void
     return authored.bars.find((bar) => bar.id === id);
   }
 
+  function alignBuckles(): void {
+    for (const bar of authored.bars) {
+      const latch = authored.latches.find((item) => item.barId === bar.id && item.release === 'sleeve');
+      if (!latch) continue;
+      latch.x = bar.x0 + (bar.x1 - bar.x0) * bar.t;
+      latch.y = bar.y0 + (bar.y1 - bar.y0) * bar.t;
+    }
+  }
+
   function commit(refreshUi = true): void {
+    alignBuckles();
     syncCatchPins(authored);
     syncPins(authored);
     play.replace(structuredClone(authored));

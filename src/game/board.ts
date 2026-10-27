@@ -163,9 +163,23 @@ export function ringFreeArcs(board: Board, ring: RingBody): CircInterval[] {
   return freeArcs(forbidden);
 }
 
-function barDepth(board: Board, ring: RingBody): number {
+/** A step is blocked when a clear pair starts to touch, or an existing overlap gets deeper. */
+function overlapGrew(before: number, now: number): boolean {
+  return (before <= 1e-4 && now > 1e-4) || (before > 1e-4 && now > before + 1e-4);
+}
+
+function ringBlockDepth(board: Board, ring: RingBody): number {
   let depth = 0;
   for (const bar of board.bars) depth += barOverlapAmount(bar, bar.t, ring);
+  return depth;
+}
+
+function barBlockDepth(board: Board, bar: BarBody, t: number): number {
+  let depth = 0;
+  for (const ring of board.rings) depth += barOverlapAmount(bar, t, ring);
+  for (const other of board.bars) {
+    if (other.id !== bar.id) depth += barsOverlapAmount(bar, t, other);
+  }
   return depth;
 }
 
@@ -185,15 +199,13 @@ export function rotateRing(board: Board, ring: RingBody, delta: number): void {
   while (left > 1e-4) {
     const step = Math.min(0.012, left);
     const previous = ring.theta;
-    const depthBefore = barDepth(board, ring);
+    const depthBefore = ringBlockDepth(board, ring);
     const claspBefore = claspLocks(board, ring);
     ring.theta = wrapAngle(ring.theta + sign * step);
     syncPins(board);
-    const depthNow = barDepth(board, ring);
-    const enteredBar = depthBefore <= 1e-4 && depthNow > 1e-4;
-    const deeperBar = depthBefore > 1e-4 && depthNow > depthBefore + 1e-4;
     const claspNow = claspLocks(board, ring);
-    if (claspBefore || (claspNow && !claspBefore) || enteredBar || deeperBar) {
+    const claspEntered = !claspBefore && claspNow;
+    if (claspBefore || claspEntered || overlapGrew(depthBefore, ringBlockDepth(board, ring))) {
       ring.theta = previous;
       syncPins(board);
       return;
@@ -238,23 +250,12 @@ export function moveBar(board: Board, bar: BarBody, target: number): void {
   const sign = Math.sign(target - bar.t);
   if (sign === 0) return;
   let left = Math.abs(target - bar.t);
-  const overlap = (t: number) => {
-    let sum = 0;
-    for (const ring of board.rings) sum += barOverlapAmount(bar, t, ring);
-    for (const other of board.bars) {
-      if (other.id !== bar.id) sum += barsOverlapAmount(bar, t, other);
-    }
-    return sum;
-  };
   while (left > 1e-4) {
     const step = Math.min(0.008, left);
     const previous = bar.t;
-    const before = overlap(previous);
+    const before = barBlockDepth(board, bar, previous);
     bar.t = previous + sign * step;
-    const now = overlap(bar.t);
-    const entered = before <= 1e-4 && now > 1e-4;
-    const deeper = before > 1e-4 && now > before + 1e-4;
-    if (entered || deeper) {
+    if (overlapGrew(before, barBlockDepth(board, bar, bar.t))) {
       bar.t = previous;
       return;
     }

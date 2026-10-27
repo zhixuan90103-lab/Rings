@@ -286,22 +286,18 @@ export function mountPlay(options: {
       armed: feedback.state.armed,
       free: feedback.state.free,
     });
-    if (effect.type === 'hit') {
+    const blocked = effect.type === 'hit' || effect.type === 'hold' || effect.type === 'stop';
+    if (blocked && (effect.type === 'hit' || feedback.state.armed)) {
       feedback.state.armed = false;
       feedback.state.free = 0;
-      showImpact(drag.kind, drag.id, effect.sign);
-    } else if (effect.type === 'free') {
+      showImpact(drag.kind, drag.id, effect.type === 'hit' ? effect.sign : Math.sign(rejected) || 1);
+    }
+    if (effect.type === 'free') {
       feedback.state.armed = effect.armed;
       feedback.state.free = effect.free;
     } else if (effect.type === 'hold') {
       feedback.holdRing(drag.id, rejected);
-      if (feedback.state.armed) {
-        feedback.state.armed = false;
-        feedback.state.free = 0;
-        showImpact(drag.kind, drag.id, Math.sign(rejected) || 1);
-      }
     } else if (effect.type === 'stop') {
-      showImpact(drag.kind, drag.id, Math.sign(rejected) || 1);
       const bar = barById(board, drag.id);
       const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
       feedback.stopBar(drag.id, rejected, length);

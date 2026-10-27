@@ -156,26 +156,6 @@ function buckleSleeve(bar: BarBody): { halfLen: number; halfW: number } {
   return { halfLen: sleeveLen / 2, halfW: bar.half * 1.3 };
 }
 
-/**
- * How far the leading cap sits in the ring solid.
- * Zero means that end is clear. Sliding only stops when this grows.
- */
-export function leadDepth(ring: RingBody, bar: BarBody, t: number, sign: number): number {
-  const seg = barSegment(bar, t);
-  const lead = sign >= 0 ? { x: seg.bx, y: seg.by } : { x: seg.ax, y: seg.ay };
-  const at = (x: number, y: number) => {
-    if (!ringSector(ring, x, y)) return 0;
-    const d = Math.hypot(x - ring.x, y - ring.y);
-    return Math.max(ring.inner - d, d - ring.outer, 0.001);
-  };
-  let depth = at(lead.x, lead.y);
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    depth = Math.max(depth, at(lead.x + Math.cos(a) * bar.half, lead.y + Math.sin(a) * bar.half));
-  }
-  return depth;
-}
-
 /** The drawn capsule still passes through the fixed silver buckle. */
 export function barStillInBuckle(bar: BarBody, px: number, py: number): boolean {
   const frame = barFrame(bar, bar.t);

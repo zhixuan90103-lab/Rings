@@ -118,7 +118,6 @@ export function mountPlay(options: {
   let markers: THREE.Object3D[] = [];
   let drag: Drag | null = null;
   let pointerId: number | null = null;
-  let held: { id: string; kind: 'ring' | 'bar'; pointerAngle: number; x: number } | null = null;
   let falls: FallBody[] = [];
   let last = performance.now();
 
@@ -158,12 +157,8 @@ export function mountPlay(options: {
   function build(): void {
     clearViews();
     syncPins(board);
-    // Proportion sheet only. Level pieces stay in the rules, but are not drawn.
-    // Measured from the reference cluster: tube thickness ≈ 17% of the outer
-    // diameter, gap ≈ 100°, bar length ≈ one outer diameter and thinner than
-    // the tube, sleeve ≈ a quarter of the bar.
-    showSpecimens();
-    onStatus('基础件');
+    showLevel();
+    onStatus(LEVELS[levelIndex]?.name ?? '关卡');
   }
 
   function syncMeshes(): void {
@@ -215,42 +210,12 @@ export function mountPlay(options: {
     return null;
   }
 
-  function turnPiece(id: string, x: number, y: number): void {
-    const view = views.find((item) => item.id === id);
-    if (!view || !held) return;
-    const pointerAngle = Math.atan2(y - view.mesh.position.y, x - view.mesh.position.x);
-    let delta = pointerAngle - held.pointerAngle;
-    if (delta > Math.PI) delta -= Math.PI * 2;
-    if (delta < -Math.PI) delta += Math.PI * 2;
-    held.pointerAngle = pointerAngle;
-    view.mesh.rotation.z += delta;
-  }
-
-  function slidePiece(id: string, x: number): void {
-    const view = views.find((item) => item.id === id);
-    if (!view || !held) return;
-    view.mesh.position.x += x - held.x;
-    held.x = x;
-  }
-
   function onPointerDown(event: PointerEvent): void {
     if (pointerId !== null) return;
     const world = worldFromEvent(event);
     if (!world) return;
     const hit = pickByRay(world);
     if (!hit) return;
-    const view = views.find((item) => item.id === hit.id);
-    if (view) {
-      held = {
-        id: hit.id,
-        kind: hit.kind,
-        pointerAngle: Math.atan2(world.y - view.mesh.position.y, world.x - view.mesh.position.x),
-        x: world.x,
-      };
-      pointerId = event.pointerId;
-      canvas.setPointerCapture(event.pointerId);
-      return;
-    }
     const next = beginDrag(board, hit, world.x, world.y);
     if (!next) return;
     drag = next;
@@ -259,27 +224,15 @@ export function mountPlay(options: {
   }
 
   function onPointerMove(event: PointerEvent): void {
-    if (event.pointerId !== pointerId || (!drag && !held)) return;
+    if (event.pointerId !== pointerId || !drag) return;
     const world = worldFromEvent(event);
     if (!world) return;
-    if (held) {
-      if (held.kind === 'ring') turnPiece(held.id, world.x, world.y);
-      else slidePiece(held.id, world.x);
-      return;
-    }
-    if (!drag) return;
     dragTo(board, drag, world.x, world.y);
     syncMeshes();
   }
 
   function finishPointer(event: PointerEvent, cancel: boolean): void {
-    if (event.pointerId !== pointerId) return;
-    if (held) {
-      held = null;
-      pointerId = null;
-      return;
-    }
-    if (!drag) return;
+    if (event.pointerId !== pointerId || !drag) return;
     if (cancel) cancelDrag(board, drag);
     else {
       const snapshotRings = board.rings.map((ring) => ({ ...ring }));
@@ -302,53 +255,42 @@ export function mountPlay(options: {
     syncMeshes();
   }
 
-  function showSpecimens(): void {
+  function showLevel(): void {
     const { outer, gap, depth, scale } = PART;
     const band = outer * PART.bandRatio;
-    const blue = discRing(outer, band, gap, depth, colorOf('blue'));
-    blue.scale.setScalar(scale);
-    blue.position.set(0, 1.25, 0);
-    blue.rotation.z = Math.PI / 2;
-    blue.userData.pieceId = 'specimen-ring';
-    root.add(blue);
-    views.push({ id: 'specimen-ring', kind: 'ring', mesh: blue, falling: false });
-
-    const green = ringWithConnectors(outer, band, gap, depth, colorOf('green'), [Math.PI]);
-    green.scale.setScalar(scale);
-    green.rotation.z = Math.PI / 2;
-    green.position.set(0, -0.15, 0);
-    green.userData.pieceId = 'specimen-ring-joint';
-    root.add(green);
-    views.push({ id: 'specimen-ring-joint', kind: 'ring', mesh: green, falling: false });
-
-    const basis = outer * 2 * scale;
-    const stick = barWithBuckle(basis * 1.5, basis, band * scale, depth * scale, colorOf('red'));
-    stick.position.set(0, -1.7, 0);
-    const capsule = stick.children[0];
-    capsule.userData.pieceId = 'specimen-bar';
-    for (const child of stick.children.slice(1)) {
-      child.traverse((obj) => {
-        obj.userData.locked = true;
-      });
+    for (const ring of board.rings) {
+      const mesh = ring.id === 'green'
+        ? ringWithConnectors(outer, band, gap, depth, colorOf(ring.id), [Math.PI / 2])
+        : discRing(outer, band, gap, depth, colorOf(ring.id));
+      mesh.scale.setScalar(scale);
+      mesh.position.set(ring.x, ring.y, 0);
+      mesh.rotation.z = ring.theta;
+      mesh.userData.pieceId = ring.id;
+      root.add(mesh);
+      views.push({ id: ring.id, kind: 'ring', mesh, falling: false });
     }
-    root.add(stick);
+    for (const bar of board.bars) {
+      const basis = outer * 2 * scale;
+      const stick = barWithBuckle(basis * 1.5, basis, band * scale, depth * scale, colorOf(bar.id));
+      const capsule = stick.children[0];
+      capsule.userData.pieceId = bar.id;
+      const x = bar.x0 + (bar.x1 - bar.x0) * bar.t;
+      const y = bar.y0 + (bar.y1 - bar.y0) * bar.t;
+      capsule.position.set(x, y, 0.2);
+      capsule.rotation.z = Math.atan2(bar.y1 - bar.y0, bar.x1 - bar.x0);
+      root.add(capsule);
+      views.push({ id: bar.id, kind: 'bar', mesh: capsule, falling: false });
+      const buckle = new THREE.Group();
+      for (const child of [...stick.children]) buckle.add(child);
+      const pin = board.pins.find((item) => item.ownerId === bar.id && item.stopHalf === 0);
+      buckle.position.set(pin?.x ?? x, pin?.y ?? y, 0.2);
+      buckle.rotation.z = capsule.rotation.z;
+      root.add(buckle);
+      markers.push(buckle);
+    }
     root.traverse((obj) => {
       if (obj instanceof THREE.Mesh && !obj.userData.fakeShadow && !obj.userData.noShadow) obj.castShadow = true;
     });
-    views.push({ id: 'specimen-bar', kind: 'bar', mesh: capsule, falling: false });
-  }
-
-  function placeJoints(): void {
-    for (const pin of board.pins) {
-      const bar = pin.ownerId ? barById(board, pin.ownerId) : undefined;
-      const marker = jointMesh(
-        pin.role === 'stop' && pin.stopHalf > 0.02 ? 'stop' : 'block',
-        bar?.half ?? 0.2,
-        bar?.grip ?? 0.9,
-      );
-      if (bar) marker.rotation.z = Math.atan2(bar.y1 - bar.y0, bar.x1 - bar.x0);
-      addMarker(marker, pin.x, pin.y, pin.id);
-    }
   }
 
   function buildMarkersOnly(): void {
@@ -358,7 +300,30 @@ export function mountPlay(options: {
     }
     markers = [];
     syncPins(board);
-    placeJoints();
+    const { outer, depth, scale } = PART;
+    const band = outer * PART.bandRatio;
+    const basis = outer * 2 * scale;
+    for (const pin of board.pins) {
+      if (pin.ownerId && ringById(board, pin.ownerId)) continue;
+      if (pin.role === 'stop' && pin.stopHalf === 0 && pin.ownerId) {
+        const bar = barById(board, pin.ownerId);
+        const stick = barWithBuckle(basis * 1.5, basis, band * scale, depth * scale, colorOf(bar?.id ?? 'red'));
+        stick.remove(stick.children[0]);
+        stick.position.set(pin.x, pin.y, 0.2);
+        if (bar) stick.rotation.z = Math.atan2(bar.y1 - bar.y0, bar.x1 - bar.x0);
+        root.add(stick);
+        markers.push(stick);
+        continue;
+      }
+      const bar = pin.ownerId ? barById(board, pin.ownerId) : undefined;
+      const marker = jointMesh(
+        pin.role === 'stop' && pin.stopHalf > 0.02 ? 'stop' : 'block',
+        bar?.half ?? 0.2,
+        bar?.grip ?? 0.9,
+      );
+      if (bar) marker.rotation.z = Math.atan2(bar.y1 - bar.y0, bar.x1 - bar.x0);
+      addMarker(marker, pin.x, pin.y, pin.id);
+    }
   }
 
   function onPointerUp(event: PointerEvent): void {
@@ -401,7 +366,6 @@ export function mountPlay(options: {
   function load(index: number): void {
     levelIndex = (index + LEVELS.length) % LEVELS.length;
     drag = null;
-    held = null;
     pointerId = null;
     board = LEVELS[levelIndex].make();
     build();

@@ -1,7 +1,8 @@
 import { gapCovers, signedDelta } from './angle';
 import { barById, moveBar, ringById, rotateRing, settle, beginDrag, cancelDrag, ringFreeArcs } from './board';
+
 import { clampAngle, freeArcs, pinForbidden } from './interval';
-import { LEVELS, levelBar, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
+import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
 
 function assert(cond: boolean, message: string): void {
   if (!cond) throw new Error(message);
@@ -62,6 +63,44 @@ const closedTry = settle(closedLevel, { kind: 'ring', id: 'closed', theta: 0, po
 assert(closedTry.length === 0, 'closed ring cannot release itself');
 const both = settle(closedLevel, { kind: 'ring', id: 'open', theta: 0, pointerAngle: 0 });
 assert(both.includes('open') && both.includes('closed'), 'closed ring leaves only by cascade');
+
+const basic = levelBasic();
+const blue = ringById(basic, 'blue')!;
+const joint = basic.pins.find((pin) => pin.id === 'joint-green')!;
+const jointAngle = Math.atan2(joint.y - blue.y, joint.x - blue.x);
+assert(!gapCovers(blue.theta, jointAngle, blue.gap), 'the blue ring starts caught in the clasp');
+const blue0 = blue.theta;
+rotateRing(basic, blue, -1.5);
+assert(Math.abs(signedDelta(blue0, blue.theta)) > 1.4, 'the blue ring can turn past the gap-right angle');
+blue.theta = blue0;
+rotateRing(basic, blue, 1.2);
+assert(Math.abs(signedDelta(blue0, blue.theta)) > 1, 'the clasp lets the ring turn through');
+assert(!gapCovers(blue.theta, jointAngle, blue.gap), 'this turn has not reached the clasp');
+const stillCaught = settle(basic, { kind: 'ring', id: 'blue', theta: blue.theta, pointerAngle: 0 });
+assert(!stillCaught.includes('blue'), 'pointerup away from the clasp stays locked');
+blue.theta = jointAngle;
+const openedBlue = settle(basic, { kind: 'ring', id: 'blue', theta: blue.theta, pointerAngle: 0 });
+assert(openedBlue.includes('blue') && !openedBlue.includes('green'), 'pointerup on the clasp releases only the blue ring');
+const green0 = ringById(basic, 'green')!.theta;
+rotateRing(basic, ringById(basic, 'green')!, 0.35);
+assert(Math.abs(signedDelta(green0, ringById(basic, 'green')!.theta)) > 0.2, 'the green ring can turn until it meets the bar');
+const greenBeforeStop = ringById(basic, 'green')!.theta;
+rotateRing(basic, ringById(basic, 'green')!, 4);
+assert(Math.abs(signedDelta(greenBeforeStop, ringById(basic, 'green')!.theta)) < Math.PI, 'the bar stops the green ring by contact');
+const slide = levelBasic();
+const red = barById(slide, 'bar-red')!;
+assert(Math.abs(red.y1 - red.y0) > Math.abs(red.x1 - red.x0) * 0.4, 'red bar sits on a diagonal');
+const tipT = red.t;
+moveBar(slide, red, 0.02);
+assert(red.t > 0.02, 'the bar cannot pass through the ring');
+red.t = tipT;
+moveBar(slide, red, 0.92);
+assert(red.t >= 0.7, 'the bar slides out along the gap');
+const greenHeld = ringById(slide, 'green')!.theta;
+rotateRing(slide, ringById(slide, 'green')!, 0.4);
+assert(Math.abs(signedDelta(greenHeld, ringById(slide, 'green')!.theta)) > 0.15, 'the green ring turns after the bar leaves its gap');
+const fellBar = settle(slide, { kind: 'bar', id: 'bar-red', t: tipT });
+assert(fellBar.includes('bar-red') && fellBar.includes('green'), 'the bar releases the green ring');
 
 const chain = levelScreen();
 const reach = (id: string) => {

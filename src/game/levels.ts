@@ -163,6 +163,103 @@ export function levelStopClosed(): Board {
 }
 
 /**
+ * Blue and green are nested through each other's gaps, on one plane,
+ * without overlapping. The green ring cannot turn. The red bar sits
+ * diagonally in the green gap and slides along that diagonal.
+ */
+export function levelBasic(): Board {
+  const scale = 0.9;
+  const outer = 0.72 * scale;
+  const inner = 0.72 * (1 - 0.28) * scale;
+  const gap = 1.75;
+  const band = 0.72 * 0.28;
+  const stemLen = band * 2.5 * (2 / 3) * scale;
+  const stemDist = (0.72 + (band * 2.5 * (2 / 3)) * 0.5 - band * 0.2) * scale;
+  const claspDist = stemDist + stemLen * 0.5;
+  const blueTheta = -2.35;
+  const blueX = 0.15;
+  const blueY = 0.45;
+  const ux = Math.cos(blueTheta);
+  const uy = Math.sin(blueTheta);
+  const claspR = (inner + outer) / 2;
+  const claspX = blueX + ux * claspR;
+  const claspY = blueY + uy * claspR;
+  const joint = Math.PI / 2;
+  const greenTheta = blueTheta + Math.PI - joint;
+  const green = ring(
+    'green',
+    claspX + ux * claspDist,
+    claspY + uy * claspDist,
+    gap,
+    greenTheta,
+  );
+  const blue = ring('blue', blueX, blueY, gap, blueTheta + Math.PI);
+  for (const item of [blue, green]) {
+    item.inner = inner;
+    item.outer = outer;
+  }
+  const grip = 0.72 * scale * 1.5;
+  const gx = Math.cos(greenTheta);
+  const gy = Math.sin(greenTheta);
+  const tip = 0.16;
+  const cx = green.x + gx * (tip + grip);
+  const cy = green.y + gy * (tip + grip);
+  const inward = 0.75;
+  const outward = 1.15;
+  const t = 0.2;
+  const x0 = cx - gx * inward;
+  const y0 = cy - gy * inward;
+  const x1 = cx + gx * outward;
+  const y1 = cy + gy * outward;
+  const board: Board = {
+    rings: [blue, green],
+    bars: [
+      {
+        id: 'bar-red',
+        kind: 'bar',
+        x0,
+        y0,
+        x1,
+        y1,
+        half: (0.72 * 0.28 * scale) / 2,
+        grip,
+        t,
+      },
+    ],
+    pins: [
+      {
+        id: 'pin-buckle',
+        ownerId: 'bar-red',
+        localAngle: 0,
+        localRadius: 0,
+        x: x0 + (x1 - x0) * t,
+        y: y0 + (y1 - y0) * t,
+        role: 'stop',
+        limitRingId: null,
+        stopHalf: 0,
+      },
+      {
+        id: 'joint-green',
+        ownerId: 'green',
+        localAngle: Math.PI / 2,
+        localRadius: claspDist,
+        x: 0,
+        y: 0,
+        role: 'catch',
+        limitRingId: null,
+        stopHalf: 0,
+      },
+    ],
+    latches: [
+      { id: 'latch-green', ringId: 'green', barId: 'bar-red', x: green.x, y: green.y, t0: 0.7, t1: 1 },
+    ],
+    volumes: true,
+  };
+  syncPins(board);
+  return board;
+}
+
+/**
  * One chain, top to bottom.
  * Each bar is held by the ring it crosses. Turn that ring until the
  * opening faces the bar, then slide the bar out. The ring below stays
@@ -199,6 +296,7 @@ export function levelScreen(): Board {
 }
 
 export const LEVELS: { name: string; make: () => Board }[] = [
+  { name: '三件', make: levelBasic },
   { name: '从上往下拆', make: levelScreen },
   { name: '开口环 + 阻挡销', make: levelPin },
   { name: '双环互扣', make: levelTwo },

@@ -50,12 +50,28 @@ export function freeArcs(forbidden: CircInterval[]): CircInterval[] {
   return free;
 }
 
+/** Join the free piece that ends at 360° with the one that starts at 0°. */
+function stitchSeam(free: CircInterval[]): CircInterval[] {
+  if (free.length === 0) return free;
+  const sorted = [...free].sort((a, b) => a.start - b.start);
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const endsAtSeam = last.start + last.length >= TAU - 1e-5;
+  const startsAtSeam = first.start <= 1e-5;
+  if (!endsAtSeam || !startsAtSeam) return sorted;
+  if (sorted.length === 1) return [{ start: 0, length: TAU }];
+  const merged = { start: last.start, length: last.length + first.length };
+  return [merged, ...sorted.slice(1, -1)];
+}
+
 export function clampAngle(theta: number, delta: number, free: CircInterval[]): number {
   if (free.length === 0 || delta === 0) return wrapAngle(theta);
+  const arcs = stitchSeam(free);
+  if (arcs.some((arc) => arc.length >= TAU - 1e-4)) return wrapAngle(theta + delta);
   const t = wrapAngle(theta);
   let arc: CircInterval | undefined;
   let rel = 0;
-  for (const f of free) {
+  for (const f of arcs) {
     const d = wrapAngle(t - f.start);
     if (d <= f.length + 1e-6) {
       arc = f;

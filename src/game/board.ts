@@ -16,6 +16,7 @@ import {
   type CircInterval,
   type LinInterval,
 } from './interval';
+import { barHitsRing, ringVolumeHit } from './volume';
 
 export type RingBody = {
   id: string;
@@ -49,7 +50,8 @@ export type Pin = {
   localRadius: number;
   x: number;
   y: number;
-  role: 'block' | 'stop';
+  /** `catch` keeps the ring until pointerup, and does not stop the turn. */
+  role: 'block' | 'stop' | 'catch';
   /** Stop pins hard-limit this ring and do not retain it. */
   limitRingId: string | null;
   stopHalf: number;
@@ -70,6 +72,8 @@ export type Board = {
   bars: BarBody[];
   pins: Pin[];
   latches: Latch[];
+  /** When set, ring and bar volumes block each other. */
+  volumes?: boolean;
 };
 
 export type Drag =
@@ -128,6 +132,26 @@ function blockingPoints(board: Board, ring: RingBody): { x: number; y: number; h
   return points;
 }
 
+function volumeForbidden(board: Board, ring: RingBody): CircInterval[] {
+  const saved = ring.theta;
+  const steps = 180;
+  const hits: LinInterval[] = [];
+  let run: number | null = null;
+  for (let i = 0; i <= steps; i++) {
+    const angle = (i / steps) * Math.PI * 2;
+    ring.theta = angle;
+    const hit = Math.abs(signedDelta(saved, angle)) > 1e-3 && ringVolumeHit(board, ring);
+    if (hit && run === null) run = angle;
+    if (!hit && run !== null) {
+      hits.push({ a: run, b: angle });
+      run = null;
+    }
+  }
+  ring.theta = saved;
+  if (run !== null) hits.push({ a: run, b: Math.PI * 2 });
+  return hits.map((hit) => ({ start: hit.a, length: hit.b - hit.a }));
+}
+
 export function ringFreeArcs(board: Board, ring: RingBody): CircInterval[] {
   const forbidden = [];
   for (const point of blockingPoints(board, ring)) {
@@ -135,6 +159,7 @@ export function ringFreeArcs(board: Board, ring: RingBody): CircInterval[] {
     const interval = point.hard ? hardForbidden(alpha, point.half) : pinForbidden(alpha, ring.gap);
     if (interval) forbidden.push(interval);
   }
+  if (board.volumes) forbidden.push(...volumeForbidden(board, ring));
   return freeArcs(forbidden);
 }
 
@@ -157,8 +182,9 @@ export function barBlocked(board: Board, bar: BarBody): LinInterval[] {
   let run: number | null = null;
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
-    const p = barPoint(bar, t);
-    const hit = board.rings.some((ring) => ringSolidContains(ring, p.x, p.y));
+    const hit = board.volumes
+      ? board.rings.some((ring) => barHitsRing(bar, t, ring))
+      : board.rings.some((ring) => ringSolidContains(ring, barPoint(bar, t).x, barPoint(bar, t).y));
     if (hit && run === null) run = t;
     if (!hit && run !== null) {
       blocked.push({ a: run, b: t });
@@ -187,7 +213,7 @@ function retainers(board: Board, id: string): number {
   if (ring) {
     let n = 0;
     for (const pin of board.pins) {
-      if (pin.role === 'block' && pin.ownerId !== ring.id && inBand(ring, pin.x, pin.y)) n += 1;
+      if ((pin.role === 'block' || pin.role === 'catch') && pin.ownerId !== ring.id && inBand(ring, pin.x, pin.y)) n += 1;
     }
     for (const latch of board.latches) {
       if (latch.ringId === ring.id) n += 1;
@@ -203,7 +229,7 @@ export function settle(board: Board, drag: Drag): string[] {
     const ring = ringById(board, drag.id);
     if (!ring) return [];
     board.pins = board.pins.filter((pin) => {
-      if (pin.role !== 'block' || pin.ownerId === ring.id) return true;
+      if ((pin.role !== 'block' && pin.role !== 'catch') || pin.ownerId === ring.id) return true;
       if (!inBand(ring, pin.x, pin.y)) return true;
       const alpha = Math.atan2(pin.y - ring.y, pin.x - ring.x);
       return !gapCovers(ring.theta, alpha, ring.gap);

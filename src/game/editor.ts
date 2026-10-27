@@ -36,7 +36,9 @@ export function mountEditor(play: PlayHandles, setStatus: (text: string) => void
 
   let level = 1;
   let tool: Tool = 'move';
-  let mode: 'edit' | 'play' = 'edit';
+  let levelMode = false;
+  let settingsOpen = false;
+  let mode: 'edit' | 'play' = 'play';
   let sheet = false;
   let authored: Board = emptyBoard();
   let selection: Selection = null;
@@ -71,14 +73,24 @@ export function mountEditor(play: PlayHandles, setStatus: (text: string) => void
 
   function render(): void {
     if (!levelHost || !editorPanel) return;
+    document.getElementById('dock')?.classList.toggle('is-compact', !levelMode && !settingsOpen);
     levelHost.replaceChildren();
+    levelHost.append(button('设置', () => {
+      settingsOpen = !settingsOpen;
+      render();
+    }, settingsOpen));
+    editorPanel.replaceChildren();
+    if (settingsOpen) editorPanel.append(settingsPane());
+    if (!levelMode) {
+      play.setEditing(false);
+      return;
+    }
     for (let n = 1; n <= LEVEL_COUNT; n += 1) {
       levelHost.append(button(String(n), () => void open(n), n === level));
     }
     levelHost.append(button(mode === 'edit' ? '试玩' : '编辑', () => toggleMode()));
     levelHost.append(button('保存', () => void persist()));
 
-    editorPanel.replaceChildren();
     if (mode === 'play') return;
 
     editorPanel.append(selectionLine());
@@ -312,7 +324,7 @@ export function mountEditor(play: PlayHandles, setStatus: (text: string) => void
 
   async function open(index: number): Promise<void> {
     level = index;
-    mode = 'edit';
+    mode = levelMode ? 'edit' : 'play';
     selection = null;
     drag = null;
     authored = await loadLevel(index);
@@ -331,6 +343,29 @@ export function mountEditor(play: PlayHandles, setStatus: (text: string) => void
     } catch (error) {
       setStatus(`保存失败：${error instanceof Error ? error.message : '未知错误'}`);
     }
+  }
+
+  function settingsPane(): HTMLDivElement {
+    const pane = document.createElement('div');
+    pane.className = 'settings';
+    const row = document.createElement('div');
+    row.className = 'row';
+    const name = document.createElement('span');
+    name.textContent = '关卡模式';
+    row.append(name);
+    row.append(button(levelMode ? '开' : '关', () => {
+      levelMode = !levelMode;
+      settingsOpen = false;
+      sheet = false;
+      selection = null;
+      mode = levelMode ? 'edit' : 'play';
+      play.setEditing(levelMode);
+      play.select(null);
+      if (levelMode) commit();
+      else render();
+    }, levelMode));
+    pane.append(row);
+    return pane;
   }
 
   function button(text: string, onClick: () => void, pressed = false): HTMLButtonElement {

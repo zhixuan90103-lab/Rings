@@ -165,6 +165,19 @@ header {
   box-shadow: 0 -8px 24px rgba(80, 50, 20, 0.08);
 }
 
+#dock.is-compact {
+  align-self: flex-end;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.settings {
+  color: #3a2414;
+  font-size: 14px;
+  font-weight: 700;
+}
+
 header h1 {
   margin: 0;
   font-size: 15px;

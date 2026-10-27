@@ -4,7 +4,7 @@
 
 ## 1. 定位
 
-可复制的 **竖屏 WebGPU 手游底座**：能 dev、能 build、能真机、能震动、桌面≈手机/Pad。当前画面画 `levelBasic`：环可转，红棍可滑，银卡扣锁定。外形见 [PARTS.md](./PARTS.md)，规则和跟手见 [ROTATE-RINGS.md](./ROTATE-RINGS.md)。
+可复制的 **竖屏 WebGPU 手游底座**：能 dev、能 build、能真机、能震动、桌面≈手机/Pad。打开后试玩 `public/levels/1.json`：环可转，杆可滑，银卡扣锁定。设置里打开关卡模式才编辑 1 到 5 关。外形见 [PARTS.md](./PARTS.md)，规则、跟手和编辑见 [ROTATE-RINGS.md](./ROTATE-RINGS.md)。
 
 ## 2. 目录
 
@@ -18,7 +18,7 @@ portrait-webgpu-base/
 ├── capacitor.config.ts     # contentInset never · scrollEnabled false
 ├── src/
 │   ├── main.ts             # 舞台、灯光、阴影
-│   ├── game/               # 零件、关卡、跟手、掉落。规则见 ROTATE-RINGS.md
+│   ├── game/               # 零件、关卡、编辑、跟手、掉落。规则见 ROTATE-RINGS.md
 │   ├── create-renderer.ts
 │   ├── style.css
 │   ├── adapt/
@@ -26,6 +26,7 @@ portrait-webgpu-base/
 │   │   ├── devicePreview.ts
 │   │   └── safeArea.ts
 │   └── utils/haptics.ts
+├── public/levels/          # 1.json … 5.json。开发时由编辑器写回
 ├── plugins/native-haptics/ # Swift 真源
 └── scripts/bootstrap-ios.mjs
 ```

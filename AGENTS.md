@@ -25,8 +25,9 @@
 | iOS 注入 | `scripts/bootstrap-ios.mjs` |
 | 音效方案（未实现） | `docs/AUDIO.md` |
 | 画面零件 | `src/game/parts.ts`，规范见 `docs/PARTS.md` |
-| 当前操作 | `src/game/play.ts` 与 `board.ts`。环按切向弧长绕自己的中心转，红棍沿长边滑动，银卡扣锁定 |
-| 规则 | `docs/ROTATE-RINGS.md`。当前画面是 `levelBasic` |
+| 当前操作 | `src/game/play.ts` 与 `board.ts`。环按切向弧长绕自己的中心转，杆沿长边滑动，银卡扣锁定 |
+| 关卡编辑 | `src/game/editor.ts`、`levelio.ts`。设置里打开关卡模式才出现。规范见 `docs/ROTATE-RINGS.md` §9 |
+| 规则 | `docs/ROTATE-RINGS.md`。试玩读 `public/levels/1.json` |
 
 ## DOM（勿拆）
 
@@ -66,14 +67,15 @@ npm run ios
 
 - 零件外形和组合：改 `src/game/parts.ts`，并同步 `docs/PARTS.md`。已定稿的尺寸、倒角、颜色不要跟着操作改  
 - 操作：`src/game/play.ts` 收指针，`src/game/board.ts` 算切向转角和沿长边的位移。银卡扣不进拖动。体积关按重叠变深退回，销钉关用禁区弧。跟手以 `docs/ROTATE-RINGS.md` §4 为准  
-- 规则：`docs/ROTATE-RINGS.md` 与 `src/game/` 里的关卡逻辑。当前画面是 `levelBasic`  
+- 规则：`docs/ROTATE-RINGS.md` 与 `src/game/`。试玩读 `public/levels/`。手写关仍在 `levels.ts`  
+- 编辑：只改 `editor.ts` 和 `levelio.ts`。柄用 `{ angle, stem, target }`。保存时的对准、杆长和居中以 `docs/ROTATE-RINGS.md` §9 为准  
 - 保留：adapt / create-renderer / haptics / plugins / `base`  
 - 触控：`clientToDesign` + 忽略 letterbox 外  
 - 音效：按 `docs/AUDIO.md` 接入；禁止热路径 `new Audio()` / 每发一次桥  
 
 ## 刻意不做
 
-- 把竖杆、横柄写进圆环网格。再加一套衔接，给 `ringWithConnectors` 再传一个角度  
+- 把竖杆、横柄写进圆环网格。再加一套衔接，往 `connectors` 里加一项 `{ angle, stem, target }`  
 - 银卡扣接到环的衔接上。卡扣只叠在胶囊棍中点，滑动时锁在画面上，不走场景投影，也不跟棍滑动。这根棍离场时，卡扣从锁住的位置一起掉落  
 - Android（可后加）  
 - WebGL 静默回退  

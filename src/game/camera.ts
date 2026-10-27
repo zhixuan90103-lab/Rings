@@ -13,6 +13,8 @@ import { buckleMetrics, connectorPoints, PART } from './parts';
 export const VIEW_H = 10;
 /** Empty design pixels kept around the level, inside the chrome. */
 export const FRAME_MARGIN = 24;
+/** How far the fitted level sits above the usable center, when the frame has room. */
+export const FRAME_LIFT = 48;
 
 export type Aabb = { minX: number; minY: number; maxX: number; maxY: number };
 
@@ -141,6 +143,13 @@ export function zoomCap(outer: number, minZoom: number, referenceOuter: number, 
   return Math.max(minZoom, referenceZoom * (referenceOuter / outer));
 }
 
+/** World distance the fit may raise the level. Never enough to leave the usable rect. */
+export function frameLift(bounds: Aabb, frame: Frame, zoom: number): number {
+  const room = frame.worldH / 2 / zoom - (bounds.maxY - bounds.minY) / 2;
+  const want = (FRAME_LIFT / DESIGN_HEIGHT) * viewSize().h / zoom;
+  return Math.max(0, Math.min(want, room));
+}
+
 /** Camera x/y is the center of the full stage, not the usable rect. */
 export function cameraForFit(bounds: Aabb, frame: Frame): { x: number; y: number; zoom: number } {
   const { w, h } = viewSize();
@@ -149,7 +158,7 @@ export function cameraForFit(bounds: Aabb, frame: Frame): { x: number; y: number
   const oy = (frame.ny * (h / 2)) / zoom;
   return {
     x: (bounds.minX + bounds.maxX) / 2 - ox,
-    y: (bounds.minY + bounds.maxY) / 2 - oy,
+    y: (bounds.minY + bounds.maxY) / 2 - oy - frameLift(bounds, frame, zoom),
     zoom,
   };
 }

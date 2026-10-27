@@ -1,4 +1,4 @@
-import { beginTwoFinger, boardBounds, cameraForFit, cameraForPinch, choosePinchLock, clampCamera, designNdc, frameFor, stepTwoFinger, worldFromDesign, zoomCap } from './camera';
+import { beginTwoFinger, boardBounds, cameraForFit, cameraForPinch, choosePinchLock, clampCamera, designNdc, frameFor, frameLift, stepTwoFinger, worldFromDesign, zoomCap } from './camera';
 import { connectorReach } from './parts';
 import { gapCovers, signedDelta } from './angle';
 import { barById, moveBar, ringById, rotateRing, settle, beginDrag, cancelDrag, dragTo, ringFreeArcs } from './board';
@@ -355,7 +355,7 @@ const fit = frameFor(box, usable);
 const cam = cameraForFit(box, fit);
 const center = worldFromDesign((usable.left + usable.right) / 2, (usable.top + usable.bottom) / 2, cam.x, cam.y, cam.zoom);
 assert(Math.abs(center.x - (box.minX + box.maxX) / 2) < 1e-6, 'fit puts the bounds on the usable center x');
-assert(Math.abs(center.y - (box.minY + box.maxY) / 2) < 1e-6, 'fit puts the bounds on the usable center y');
+assert(Math.abs(center.y - ((box.minY + box.maxY) / 2 - frameLift(box, fit, cam.zoom))) < 1e-6, 'fit puts the bounds above the usable center');
 const focal = worldFromDesign(195, 422, cam.x, cam.y, cam.zoom);
 const zoomed = cam.zoom * 2;
 const shifted = worldFromDesign(195, 422, cam.x, cam.y, zoomed);

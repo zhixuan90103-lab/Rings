@@ -27,8 +27,18 @@ export type RingBody = {
   outer: number;
   gap: number;
   theta: number;
-  /** Local angles of stems and handles. Empty when this ring has none. */
-  connectors: number[];
+  /** Authored color. Omitted rings keep the color implied by their id. */
+  color?: number;
+  /** Stems and handles on this ring. Empty when it has none. */
+  connectors: RingConnector[];
+};
+
+/** One stem plus one clasp. `stem` is the straight rod length, in the same units as `outer`. */
+export type RingConnector = {
+  angle: number;
+  stem: number;
+  /** Ring this handle is meant to lock. The clasp still has to sit in that ring. */
+  target: string | null;
 };
 
 export type BarBody = {
@@ -42,6 +52,7 @@ export type BarBody = {
   /** Half-length of the visible capsule, in world units along the rail. */
   grip: number;
   t: number;
+  color?: number;
 };
 
 export type Pin = {

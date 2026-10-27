@@ -208,7 +208,11 @@ export function levelBasic(): Board {
     gap,
     greenTheta,
   );
-  green.connectors = [joint];
+  green.connectors = [{
+    angle: joint,
+    stem: connectorMetrics(outer, outer * PART.bandRatio).stemLen,
+    target: 'blue',
+  }];
   const blue = ring('blue', blueX, blueY, gap, blueTheta + Math.PI);
   for (const item of [blue, green]) {
     item.inner = inner;

@@ -27,6 +27,22 @@ export function connectorMetrics(outer: number, band: number): {
   bend: number;
 } {
   const stemLen = band * 2.5 * (2 / 3);
+  return connectorLayout(outer, band, stemLen);
+}
+
+/**
+ * Same clasp-to-band ratios as `connectorMetrics`.
+ * `stemLen` is the straight rod only; the clasp does not stretch with it.
+ */
+export function connectorLayout(outer: number, band: number, stemLen: number): {
+  stemLen: number;
+  stemW: number;
+  claspLen: number;
+  claspW: number;
+  stemDist: number;
+  claspDist: number;
+  bend: number;
+} {
   const stemW = band * 0.88;
   const claspLen = band * 2.1 * (5 / 6);
   const claspW = band * 1.4;
@@ -230,11 +246,13 @@ export function attachConnector(
   depth: number,
   material: THREE.Material,
   angle: number,
+  stemLen?: number,
 ): void {
-  const { stemLen, stemW, claspLen, claspW, stemDist, claspDist, bend } = connectorMetrics(outer, band);
+  const layout = connectorLayout(outer, band, stemLen ?? connectorMetrics(outer, band).stemLen);
+  const { stemLen: length, stemW, claspLen, claspW, stemDist, claspDist, bend } = layout;
   const c = Math.cos(angle);
   const s = Math.sin(angle);
-  const stem = straightBar(stemLen, stemW, depth, material);
+  const stem = straightBar(length, stemW, depth, material);
   stem.position.set(c * stemDist, s * stemDist, 0);
   stem.rotation.z = angle;
   parent.add(stem);
@@ -251,14 +269,16 @@ export function ringWithConnectors(
   gap: number,
   depth: number,
   color: number,
-  angles: number[],
+  connectors: { angle: number; stem: number }[],
 ): THREE.Group {
   const group = new THREE.Group();
   const ring = discRing(outer, band, gap, depth, color);
   ring.position.z = 0.04;
   group.add(ring);
   const material = plastic(color);
-  for (const angle of angles) attachConnector(group, outer, band, depth, material, angle);
+  for (const connector of connectors) {
+    attachConnector(group, outer, band, depth, material, connector.angle, connector.stem);
+  }
   return group;
 }
 

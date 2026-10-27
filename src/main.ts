@@ -22,6 +22,7 @@ import { applyNativeClass, applySafeAreaCssVars, readSafeAreaInsets } from './ad
 import { createRenderer, resizeToDesign } from './create-renderer';
 import { haptics } from './utils/haptics';
 import { mountPlay } from './game/play';
+import { mountEditor } from './game/editor';
 
 const shell = document.getElementById('shell')!;
 const viewportEl = document.getElementById('viewport')!;
@@ -145,12 +146,7 @@ async function boot(): Promise<void> {
 
   // Optional: document.body.classList.add('debug-safe-area')
 
-  document.querySelectorAll<HTMLButtonElement>('[data-level]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const index = Number(btn.getAttribute('data-level'));
-      if (Number.isFinite(index)) play.load(index);
-    });
-  });
+  mountEditor(play, setStatus);
 
   if (haptics.isNativeIos()) {
     setLog(

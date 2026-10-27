@@ -7,7 +7,7 @@
 
 import type { BarBody, Board, RingBody } from './board';
 import { gapCovers, signedDelta, wrapAngle } from './angle';
-import { PART, buckleMetrics, connectorMetrics } from './parts';
+import { PART, buckleMetrics, connectorLayout } from './parts';
 
 /**
  * Radius of the drawn gap cap.
@@ -27,23 +27,17 @@ function ringSector(ring: RingBody, x: number, y: number): boolean {
 
 const SCALE = PART.scale;
 
-function band(): number {
-  return PART.outer * PART.bandRatio;
-}
-
 function connectorBox(ring: RingBody): { x: number; y: number; angle: number; length: number; width: number }[] {
-  const metrics = connectorMetrics(PART.outer, band());
-  const stemLen = metrics.stemLen * SCALE;
-  const stemW = metrics.stemW * SCALE;
-  const stemDist = metrics.stemDist * SCALE;
-  return ring.connectors.map((local) => {
-    const world = ring.theta + local;
+  const width = ring.outer * PART.bandRatio;
+  return ring.connectors.map((connector) => {
+    const metrics = connectorLayout(ring.outer, width, connector.stem);
+    const world = ring.theta + connector.angle;
     return {
-      x: ring.x + Math.cos(world) * stemDist,
-      y: ring.y + Math.sin(world) * stemDist,
+      x: ring.x + Math.cos(world) * metrics.stemDist,
+      y: ring.y + Math.sin(world) * metrics.stemDist,
       angle: world,
-      length: stemLen,
-      width: stemW,
+      length: metrics.stemLen,
+      width: metrics.stemW,
     };
   });
 }
@@ -327,21 +321,18 @@ function connectorSamples(ring: RingBody): { x: number; y: number }[] {
 type ClaspArc = { cx: number; cy: number; radius: number; half: number; width: number; mid: number };
 
 function claspArcs(ring: RingBody): ClaspArc[] {
-  const metrics = connectorMetrics(PART.outer, band());
-  const claspDist = metrics.claspDist * SCALE;
-  const bend = metrics.bend * SCALE;
-  const claspLen = metrics.claspLen * SCALE;
-  const claspW = metrics.claspW * SCALE;
-  return ring.connectors.map((local) => {
-    const world = ring.theta + local;
-    const ox = ring.x + Math.cos(world) * claspDist;
-    const oy = ring.y + Math.sin(world) * claspDist;
+  const width = ring.outer * PART.bandRatio;
+  return ring.connectors.map((connector) => {
+    const metrics = connectorLayout(ring.outer, width, connector.stem);
+    const world = ring.theta + connector.angle;
+    const ox = ring.x + Math.cos(world) * metrics.claspDist;
+    const oy = ring.y + Math.sin(world) * metrics.claspDist;
     return {
-      cx: ox + Math.cos(world) * bend,
-      cy: oy + Math.sin(world) * bend,
-      radius: bend,
-      half: claspLen / 2 / bend,
-      width: claspW,
+      cx: ox + Math.cos(world) * metrics.bend,
+      cy: oy + Math.sin(world) * metrics.bend,
+      radius: metrics.bend,
+      half: metrics.claspLen / 2 / metrics.bend,
+      width: metrics.claspW,
       mid: Math.atan2(-Math.sin(world), -Math.cos(world)),
     };
   });

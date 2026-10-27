@@ -24,13 +24,12 @@
           <div id="stage" aria-label="game-stage">
             <div id="ui-root">
               <header>
-                <p class="eyebrow">Rotate Rings</p>
-                <h1>先转开口，再抽出被挡住的杆</h1>
-                <div class="row" id="levels">
-                  <button type="button" data-level="0">本关</button>
-                </div>
                 <p id="status" class="status">booting…</p>
               </header>
+              <footer id="dock">
+                <div class="row" id="levels"></div>
+                <div id="editor" class="editor"></div>
+              </footer>
               <section class="panel">
                 <p class="panel-title">震动测试（必须真机 App，模拟器多数不震）</p>
                 <button type="button" class="haptic-primary" data-haptic="impact">

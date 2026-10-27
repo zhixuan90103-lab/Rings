@@ -36,6 +36,13 @@ export type PlayHandles = {
   resize: () => void;
   dispose: () => void;
   load: (index: number) => void;
+  replace: (next: Board) => void;
+  pose: (next: Board) => void;
+  copy: () => Board;
+  setEditing: (on: boolean) => void;
+  pointerWorld: (event: PointerEvent, clampToDesign: boolean) => { x: number; y: number } | null;
+  pickAt: (world: { x: number; y: number }) => { kind: 'ring'; id: string } | { kind: 'bar'; id: string } | null;
+  select: (id: string | null) => void;
 };
 
 type PieceView = {
@@ -109,6 +116,7 @@ export function mountPlay(options: {
 
   let board: Board = LEVELS[0].make();
   let levelIndex = 0;
+  let editing = false;
   let views: PieceView[] = [];
   let markers: THREE.Object3D[] = [];
   let rivets: { mesh: THREE.Object3D; body: FallBody }[] = [];
@@ -120,6 +128,43 @@ export function mountPlay(options: {
   let last = performance.now();
 
   const raycaster = new THREE.Raycaster();
+  let selectedId: string | null = null;
+  const halo = new THREE.Mesh(
+    new THREE.RingGeometry(0.82, 1, 64),
+    new THREE.MeshBasicMaterial({ color: 0x2a2118, side: THREE.DoubleSide, depthTest: false }),
+  );
+  halo.visible = false;
+  halo.renderOrder = 8;
+  root.add(halo);
+
+  function placeHalo(): void {
+    if (!editing || !selectedId) {
+      halo.visible = false;
+      return;
+    }
+    const ring = ringById(board, selectedId);
+    if (ring) {
+      halo.visible = true;
+      halo.position.set(ring.x, ring.y, 0.42);
+      halo.rotation.z = 0;
+      const radius = ring.outer + 0.07;
+      halo.scale.set(radius, radius, 1);
+      return;
+    }
+    const bar = barById(board, selectedId);
+    if (!bar) {
+      halo.visible = false;
+      return;
+    }
+    halo.visible = true;
+    halo.position.set(
+      bar.x0 + (bar.x1 - bar.x0) * bar.t,
+      bar.y0 + (bar.y1 - bar.y0) * bar.t,
+      0.5,
+    );
+    halo.rotation.z = Math.atan2(bar.y1 - bar.y0, bar.x1 - bar.x0);
+    halo.scale.set(bar.grip + 0.12, bar.half + 0.1, 1);
+  }
 
   function resize(): void {
     const { w, h } = viewSize();
@@ -161,7 +206,7 @@ export function mountPlay(options: {
     clearViews();
     syncPins(board);
     showLevel();
-    onStatus(LEVELS[levelIndex]?.name ?? '关卡');
+    placeHalo();
   }
 
   function syncMeshes(): void {
@@ -187,6 +232,7 @@ export function mountPlay(options: {
       if (pin) marker.position.set(pin.x, pin.y, 0.2);
     }
     applyFeedback();
+    placeHalo();
   }
 
   function applyFeedback(): void {
@@ -237,7 +283,7 @@ export function mountPlay(options: {
   }
 
   function onPointerDown(event: PointerEvent): void {
-    if (pointerId !== null) return;
+    if (editing || pointerId !== null) return;
     const world = worldFromEvent(event, true);
     if (!world) return;
     const hit = pickByRay(world);
@@ -361,13 +407,15 @@ export function mountPlay(options: {
   }
 
   function showLevel(): void {
-    const { outer, gap, depth, scale } = PART;
-    const band = outer * PART.bandRatio;
+    const { outer, depth, scale } = PART;
     for (const ring of board.rings) {
+      const ringOuter = ring.outer;
+      const ringBand = ringOuter * PART.bandRatio;
+      const ringDepth = depth * (ringOuter / (outer * scale));
+      const tint = ring.color ?? colorOf(ring.id);
       const mesh = ring.connectors.length > 0
-        ? ringWithConnectors(outer, band, gap, depth, colorOf(ring.id), ring.connectors)
-        : discRing(outer, band, gap, depth, colorOf(ring.id));
-      mesh.scale.setScalar(scale);
+        ? ringWithConnectors(ringOuter, ringBand, ring.gap, ringDepth, tint, ring.connectors)
+        : discRing(ringOuter, ringBand, ring.gap, ringDepth, tint);
       mesh.position.set(ring.x, ring.y, 0);
       mesh.rotation.z = ring.theta;
       mesh.userData.pieceId = ring.id;
@@ -376,7 +424,7 @@ export function mountPlay(options: {
     }
     for (const bar of board.bars) {
       const basis = outer * 2 * scale;
-      const stick = barWithBuckle(basis * 1.5, basis, band * scale, depth * scale, colorOf(bar.id));
+      const stick = barWithBuckle(bar.grip * 2, basis, bar.half * 2, depth * scale, bar.color ?? colorOf(bar.id));
       const capsule = stick.children[0];
       capsule.userData.pieceId = bar.id;
       const x = bar.x0 + (bar.x1 - bar.x0) * bar.t;
@@ -407,13 +455,12 @@ export function mountPlay(options: {
     markers = [];
     syncPins(board);
     const { outer, depth, scale } = PART;
-    const band = outer * PART.bandRatio;
     const basis = outer * 2 * scale;
     for (const latch of board.latches) {
       if (latch.release !== 'sleeve') continue;
       const bar = barById(board, latch.barId);
       if (!bar) continue;
-      const stick = barWithBuckle(basis * 1.5, basis, band * scale, depth * scale, colorOf(bar.id));
+      const stick = barWithBuckle(bar.grip * 2, basis, bar.half * 2, depth * scale, bar.color ?? colorOf(bar.id));
       stick.remove(stick.children[0]);
       stick.position.set(latch.x, latch.y, 0.2);
       stick.rotation.z = Math.atan2(bar.y1 - bar.y0, bar.x1 - bar.x0);
@@ -487,14 +534,46 @@ export function mountPlay(options: {
     feedback.clear();
     board = LEVELS[levelIndex].make();
     build();
+    onStatus(LEVELS[levelIndex]?.name ?? '关卡');
   }
 
   resize();
   load(0);
 
+  function replace(next: Board): void {
+    drag = null;
+    dragMoved = false;
+    pointerId = null;
+    feedback.clear();
+    board = next;
+    build();
+  }
+
+  function pose(next: Board): void {
+    board = next;
+    syncPins(board);
+    syncMeshes();
+  }
+
   return {
     resize,
     load,
+    replace,
+    pose,
+    copy: () => structuredClone(board),
+    setEditing: (on: boolean) => {
+      editing = on;
+      drag = null;
+      dragMoved = false;
+      pointerId = null;
+      placeHalo();
+    },
+    pointerWorld: worldFromEvent,
+    pickAt: pickByRay,
+    select: (id: string | null) => {
+      selectedId = id;
+      placeHalo();
+    },
     dispose: () => {
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);

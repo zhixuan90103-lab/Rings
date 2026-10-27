@@ -154,6 +154,17 @@ header {
   pointer-events: none;
 }
 
+#dock {
+  position: relative;
+  z-index: 1;
+  margin-top: auto;
+  pointer-events: auto;
+  padding: 8px;
+  border-radius: 16px;
+  background: rgba(251, 240, 224, 0.92);
+  box-shadow: 0 -8px 24px rgba(80, 50, 20, 0.08);
+}
+
 header h1 {
   margin: 0;
   font-size: 15px;
@@ -162,7 +173,9 @@ header h1 {
   color: #6b4b32;
 }
 
-header button {
+header button,
+#levels,
+#editor {
   pointer-events: auto;
 }
 
@@ -294,4 +307,86 @@ button:active {
 
 #device-label.visible {
   display: block;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.editor-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.editor button,
+#levels button {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+#levels button.is-on,
+.editor button.is-on {
+  background: #7c3aed;
+}
+
+.editor select {
+  min-height: 32px;
+  border-radius: 8px;
+  border: 0;
+  background: #334155;
+  color: #f8fafc;
+}
+
+.editor .log {
+  color: #6b4b32;
+  opacity: 1;
+}
+
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #3a2414;
+}
+
+.pick-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ccc;
+  box-shadow: 0 0 0 2px #3a2414;
+}
+
+.editor-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #6b4b32;
+}
+
+.editor-slider input {
+  flex: 1;
+}
+
+.editor-slider input[type='number'] {
+  flex: 0 0 96px;
+  width: 96px;
+  min-height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: #fff;
+  color: #3a2414;
+  padding: 4px 6px;
+  font-size: 13px;
 }

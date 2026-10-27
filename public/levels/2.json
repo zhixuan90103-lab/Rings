@@ -1,0 +1,194 @@
+{
+  "rings": [
+    {
+      "id": "ring-1",
+      "kind": "ring",
+      "x": -1.2939564359872244,
+      "y": -0.6474703912405666,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 3.0990619513787214,
+      "color": 3844351,
+      "connectors": [
+        {
+          "angle": -2.2689280275926285,
+          "stem": 0.31059226253790745,
+          "target": "ring-2"
+        }
+      ]
+    },
+    {
+      "id": "ring-2",
+      "kind": "ring",
+      "x": -0.2955671133991665,
+      "y": 0.44449497015694694,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 2.265133677419998,
+      "color": 4050035,
+      "connectors": [
+        {
+          "angle": -1.5707963267948966,
+          "stem": 0.31059226253790745,
+          "target": "ring-6"
+        },
+        {
+          "angle": 2.705260340591211,
+          "stem": 0.31059226253790745,
+          "target": "ring-4"
+        }
+      ]
+    },
+    {
+      "id": "ring-3",
+      "kind": "ring",
+      "x": -0.878302605154982,
+      "y": -2.111763231921066,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 4.168323175698872,
+      "color": 16733772,
+      "connectors": []
+    },
+    {
+      "id": "ring-4",
+      "kind": "ring",
+      "x": 0.08195196263147736,
+      "y": -0.9861164156438276,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 5.315112754371619,
+      "color": 16747050,
+      "connectors": [
+        {
+          "angle": -1.3089969389957472,
+          "stem": 0.31059226253790745,
+          "target": "ring-3"
+        }
+      ]
+    },
+    {
+      "id": "ring-5",
+      "kind": "ring",
+      "x": 1.2939564359872242,
+      "y": -0.1374617470562437,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 0,
+      "color": 11037695,
+      "connectors": [
+        {
+          "angle": -2.5307274153917776,
+          "stem": 0.31059226253790745,
+          "target": "ring-4"
+        }
+      ]
+    },
+    {
+      "id": "ring-6",
+      "kind": "ring",
+      "x": 0.8414606700893431,
+      "y": 1.3912459456119766,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 0.7131100164596234,
+      "color": 15909198,
+      "connectors": [
+        {
+          "angle": 1.9198621771937625,
+          "stem": 0.31059226253790745,
+          "target": "ring-7"
+        }
+      ]
+    },
+    {
+      "id": "ring-7",
+      "kind": "ring",
+      "x": -0.4508335804896916,
+      "y": 2.111763231921066,
+      "inner": 0.46656,
+      "outer": 0.648,
+      "gap": 1.75,
+      "theta": 1.2074931965517828,
+      "color": 3844351,
+      "connectors": []
+    }
+  ],
+  "bars": [],
+  "pins": [
+    {
+      "id": "catch:ring-1:0",
+      "ownerId": "ring-1",
+      "localAngle": -2.2689280275926285,
+      "localRadius": 0.9223042625379074,
+      "x": -0.6716067995320258,
+      "y": 0.03321021131813384,
+      "role": "catch",
+      "limitRingId": null,
+      "stopHalf": 0
+    },
+    {
+      "id": "catch:ring-2:0",
+      "ownerId": "ring-2",
+      "localAngle": -1.5707963267948966,
+      "localRadius": 0.9223042625379074,
+      "x": 0.41320331481334205,
+      "y": 1.0346556540279166,
+      "role": "catch",
+      "limitRingId": null,
+      "stopHalf": 0
+    },
+    {
+      "id": "catch:ring-2:1",
+      "ownerId": "ring-2",
+      "localAngle": 2.705260340591211,
+      "localRadius": 0.9223042625379074,
+      "x": -0.060239216348413366,
+      "y": -0.447281870518602,
+      "role": "catch",
+      "limitRingId": null,
+      "stopHalf": 0
+    },
+    {
+      "id": "catch:ring-4:0",
+      "ownerId": "ring-4",
+      "localAngle": -1.3089969389957472,
+      "localRadius": 0.9223042625379074,
+      "x": -0.5166262349169417,
+      "y": -1.687792476312338,
+      "role": "catch",
+      "limitRingId": null,
+      "stopHalf": 0
+    },
+    {
+      "id": "catch:ring-5:0",
+      "ownerId": "ring-5",
+      "localAngle": -2.5307274153917776,
+      "localRadius": 0.9223042625379074,
+      "x": 0.5384490138728465,
+      "y": -0.6664737391941166,
+      "role": "catch",
+      "limitRingId": null,
+      "stopHalf": 0
+    },
+    {
+      "id": "catch:ring-6:0",
+      "ownerId": "ring-6",
+      "localAngle": 1.9198621771937625,
+      "localRadius": 0.9223042625379074,
+      "x": 0.035904321633833725,
+      "y": 1.8403830317656578,
+      "role": "catch",
+      "limitRingId": null,
+      "stopHalf": 0
+    }
+  ],
+  "latches": [],
+  "volumes": true
+}

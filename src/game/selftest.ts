@@ -12,6 +12,7 @@ import { ringChipPoints } from './shatter';
 import { DESIGN_HEIGHT, DESIGN_WIDTH } from '../adapt/design';
 import { INTENT_PAD, chooseIntent, intentWorld, listCandidates } from './intent';
 import { VIEW_H } from './camera';
+import { breakPraise, freshPraise, notePraiseClear } from './praise';
 
 function assert(cond: boolean, message: string): void {
   if (!cond) throw new Error(message);
@@ -428,5 +429,16 @@ assert(inside.zoom === fit.maxZoom, 'the edge clamp keeps the pinched zoom');
 const seen = worldFromDesign((usable.left + usable.right) / 2, (usable.top + usable.bottom) / 2, inside.x, inside.y, inside.zoom);
 assert(seen.x >= box.minX - 1e-6 && seen.x <= box.maxX + 1e-6, 'zoomed pan stays inside the bounds');
 assert(seen.y >= box.minY - 1e-6 && seen.y <= box.maxY + 1e-6, 'zoomed pan stays inside the bounds');
+
+const praise = freshPraise();
+assert(notePraiseClear(praise, 1) === 0, 'the first single clear is silent');
+assert(notePraiseClear(praise, 1) === 1, 'the next single clear is Great');
+assert(notePraiseClear(praise, 1) === 2, 'the following single clear is Perfect');
+assert(notePraiseClear(praise, 3) === 4, 'clearing several pieces rises two steps');
+assert(notePraiseClear(praise, 1) === 4, 'Amazing is the top');
+breakPraise(praise);
+assert(notePraiseClear(praise, 1) === 0, 'a fault makes the next clear a first clear');
+const multi = freshPraise();
+assert(notePraiseClear(multi, 2) === 2, 'a first multi clear is Perfect');
 
 console.log('rotate-rings selftest ok');

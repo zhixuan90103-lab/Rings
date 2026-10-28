@@ -30,7 +30,7 @@ import { disposeShatter, releaseBar, releaseBuckle, releaseRing, stepShatters, t
 import { LEVELS } from './levels';
 import level1 from '../../public/levels/1.json';
 import { dragEffect, mountFeedback } from './feedback';
-import { showPraise } from './praise';
+import { breakPraise, freshPraise, notePraiseClear, showPraise, type PraiseCombo } from './praise';
 import { strikePoint } from './volume';
 import {
   INTENT_PAD,
@@ -155,8 +155,7 @@ export function mountPlay(options: {
   let hold = false;
   let fitted = true;
   let awaitingNext = false;
-  let praiseRank = 0;
-  let praiseLive = false;
+  const praise: PraiseCombo = freshPraise();
   let clearLeft = 0;
   let bounds: Aabb = { minX: -1, minY: -1, maxX: 1, maxY: 1 };
   let limits: Frame = frameFor(bounds, { left: FRAME_MARGIN, top: FRAME_MARGIN, right: DESIGN_WIDTH - FRAME_MARGIN, bottom: DESIGN_HEIGHT - FRAME_MARGIN });
@@ -592,10 +591,7 @@ export function mountPlay(options: {
       free: feedback.state.free,
     });
     const blocked = effect.type === 'hit' || effect.type === 'hold' || effect.type === 'stop';
-    if (effect.type === 'hit' || effect.type === 'stop') {
-      praiseRank = 0;
-      praiseLive = false;
-    }
+    if (effect.type === 'hit' || effect.type === 'stop') breakPraise(praise);
     if (blocked && (effect.type === 'hit' || feedback.state.armed)) {
       feedback.state.armed = false;
       feedback.state.free = 0;
@@ -668,16 +664,7 @@ export function mountPlay(options: {
         const targetId = left.includes(drag.id) ? drag.id : left[0];
         const ring = snapshotRings.find((item) => item.id === targetId);
         const bar = snapshotBars.find((item) => item.id === targetId);
-        const steps = left.length >= 2 ? 2 : 1;
-        let show = 0;
-        if (!praiseLive) {
-          praiseLive = true;
-          praiseRank = steps >= 2 ? 2 : 0;
-          show = praiseRank;
-        } else {
-          praiseRank = Math.min(4, praiseRank + steps);
-          show = praiseRank;
-        }
+        const show = notePraiseClear(praise, left.length);
         if (show > 0) {
           if (ring) praiseAt(ring.x, ring.y, show);
           else if (bar) {
@@ -850,8 +837,7 @@ export function mountPlay(options: {
     hold = false;
     awaitingNext = false;
     clearLeft = 0;
-    praiseRank = 0;
-    praiseLive = false;
+    breakPraise(praise);
     feedback.clear();
     board = LEVELS[levelIndex].make();
     build();
@@ -873,8 +859,7 @@ export function mountPlay(options: {
     hold = false;
     awaitingNext = false;
     clearLeft = 0;
-    praiseRank = 0;
-    praiseLive = false;
+    breakPraise(praise);
     build();
     refreshLimits(false);
   }

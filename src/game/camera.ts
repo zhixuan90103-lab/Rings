@@ -43,6 +43,23 @@ export function designNdc(dx: number, dy: number): { x: number; y: number } {
   };
 }
 
+export function designFromWorld(
+  x: number,
+  y: number,
+  camX: number,
+  camY: number,
+  zoom: number,
+): { x: number; y: number } {
+  const { w, h } = viewSize();
+  const z = Math.max(zoom, 1e-4);
+  const ndcX = ((x - camX) * z) / (w / 2);
+  const ndcY = ((y - camY) * z) / (h / 2);
+  return {
+    x: ((ndcX + 1) / 2) * DESIGN_WIDTH,
+    y: ((1 - ndcY) / 2) * DESIGN_HEIGHT,
+  };
+}
+
 export function worldFromDesign(
   dx: number,
   dy: number,

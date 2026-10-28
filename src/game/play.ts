@@ -30,6 +30,7 @@ import { disposeShatter, releaseBar, releaseBuckle, releaseRing, stepShatters, t
 import { LEVELS } from './levels';
 import level1 from '../../public/levels/1.json';
 import { dragEffect, mountFeedback } from './feedback';
+import { showPraise } from './praise';
 import { strikePoint } from './volume';
 import {
   INTENT_PAD,
@@ -52,6 +53,7 @@ import {
   type TwoFinger,
   FRAME_MARGIN,
   frameFor,
+  designFromWorld,
   viewSize,
   worldFromDesign,
   type Aabb,
@@ -127,10 +129,11 @@ export function mountPlay(options: {
   canvas: HTMLCanvasElement;
   getLayout: () => StageLayout | null;
   onStatus: (text: string) => void;
+  onScore?: (points: number) => void;
   onRelease: () => void;
   onCleared?: () => void;
 }): PlayHandles {
-  const { scene, camera, canvas, onStatus, onRelease, onCleared } = options;
+  const { scene, camera, canvas, onStatus, onScore, onRelease, onCleared } = options;
   const root = new THREE.Group();
   scene.add(root);
 
@@ -152,6 +155,8 @@ export function mountPlay(options: {
   let hold = false;
   let fitted = true;
   let awaitingNext = false;
+  let praiseRank = 0;
+  let praiseLive = false;
   let clearLeft = 0;
   let bounds: Aabb = { minX: -1, minY: -1, maxX: 1, maxY: 1 };
   let limits: Frame = frameFor(bounds, { left: FRAME_MARGIN, top: FRAME_MARGIN, right: DESIGN_WIDTH - FRAME_MARGIN, bottom: DESIGN_HEIGHT - FRAME_MARGIN });
@@ -197,6 +202,11 @@ export function mountPlay(options: {
     );
     halo.rotation.z = Math.atan2(bar.y1 - bar.y0, bar.x1 - bar.x0);
     halo.scale.set(bar.grip + 0.12, bar.half + 0.1, 1);
+  }
+
+  function praiseAt(x: number, y: number, cleared: number): void {
+    const design = designFromWorld(x, y, camera.position.x, camera.position.y, camera.zoom);
+    showPraise(design.x, design.y, cleared);
   }
 
   function designToWorld(dx: number, dy: number): { x: number; y: number } {
@@ -582,6 +592,10 @@ export function mountPlay(options: {
       free: feedback.state.free,
     });
     const blocked = effect.type === 'hit' || effect.type === 'hold' || effect.type === 'stop';
+    if (effect.type === 'hit' || effect.type === 'stop') {
+      praiseRank = 0;
+      praiseLive = false;
+    }
     if (blocked && (effect.type === 'hit' || feedback.state.armed)) {
       feedback.state.armed = false;
       feedback.state.free = 0;
@@ -623,6 +637,7 @@ export function mountPlay(options: {
       const snapshotRings = board.rings.map((ring) => ({ ...ring }));
       const snapshotBars = board.bars.map((bar) => ({ ...bar }));
       const left = settle(board, drag);
+      let scored = 0;
       for (const id of left) {
         const ring = snapshotRings.find((item) => item.id === id);
         const bar = snapshotBars.find((item) => item.id === id);
@@ -631,6 +646,7 @@ export function mountPlay(options: {
         view.falling = true;
         view.mesh.visible = false;
         if (ring) {
+          scored += 100;
           const chips = releaseRing(root, ring, ring.color ?? colorOf(ring.id));
           if (chips) shatters.push(chips);
         } else if (bar) {
@@ -648,6 +664,32 @@ export function mountPlay(options: {
         }
       }
       buildMarkersOnly();
+      if (left.length > 0) {
+        const targetId = left.includes(drag.id) ? drag.id : left[0];
+        const ring = snapshotRings.find((item) => item.id === targetId);
+        const bar = snapshotBars.find((item) => item.id === targetId);
+        const steps = left.length >= 2 ? 2 : 1;
+        let show = 0;
+        if (!praiseLive) {
+          praiseLive = true;
+          praiseRank = steps >= 2 ? 2 : 0;
+          show = praiseRank;
+        } else {
+          praiseRank = Math.min(4, praiseRank + steps);
+          show = praiseRank;
+        }
+        if (show > 0) {
+          if (ring) praiseAt(ring.x, ring.y, show);
+          else if (bar) {
+            praiseAt(
+              bar.x0 + (bar.x1 - bar.x0) * bar.t,
+              bar.y0 + (bar.y1 - bar.y0) * bar.t,
+              show,
+            );
+          }
+        }
+      }
+      if (scored > 0) onScore?.(scored);
       if (left.length > 0) onRelease();
       if (board.rings.length === 0 && board.bars.length === 0) awaitingNext = true;
     }
@@ -808,6 +850,8 @@ export function mountPlay(options: {
     hold = false;
     awaitingNext = false;
     clearLeft = 0;
+    praiseRank = 0;
+    praiseLive = false;
     feedback.clear();
     board = LEVELS[levelIndex].make();
     build();
@@ -829,6 +873,8 @@ export function mountPlay(options: {
     hold = false;
     awaitingNext = false;
     clearLeft = 0;
+    praiseRank = 0;
+    praiseLive = false;
     build();
     refreshLimits(false);
   }

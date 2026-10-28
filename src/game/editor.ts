@@ -29,7 +29,14 @@ type Selection =
  * Level editor on #ui-root. Edit mode drags pieces. Play mode uses the puzzle rules.
  * Angle 0 is +X and increases counterclockwise, the same θ the meshes use.
  */
-export function mountEditor(play: PlayHandles, setStatus: (text: string) => void): { advance: () => void } {
+export function mountEditor(
+  play: PlayHandles,
+  setStatus: (text: string) => void,
+  hud: { setLevel: (level: number) => void; resetMoves: () => void } = {
+    setLevel: () => {},
+    resetMoves: () => {},
+  },
+): { advance: () => void } {
   const levelHost = document.getElementById('levels');
   const editorPanel = document.getElementById('editor');
   if (!levelHost || !editorPanel) return { advance: () => {} };
@@ -75,10 +82,8 @@ export function mountEditor(play: PlayHandles, setStatus: (text: string) => void
     if (!levelHost || !editorPanel) return;
     document.getElementById('dock')?.classList.toggle('is-compact', !levelMode && !settingsOpen);
     levelHost.replaceChildren();
-    levelHost.append(button('设置', () => {
-      settingsOpen = !settingsOpen;
-      render();
-    }, settingsOpen));
+    document.getElementById('hud-settings')?.classList.toggle('is-on', settingsOpen);
+    document.getElementById('hud-settings')?.setAttribute('aria-pressed', settingsOpen ? 'true' : 'false');
     editorPanel.replaceChildren();
     if (settingsOpen) editorPanel.append(settingsPane());
     if (!levelMode) {
@@ -328,6 +333,8 @@ export function mountEditor(play: PlayHandles, setStatus: (text: string) => void
     selection = null;
     drag = null;
     authored = await loadLevel(index);
+    hud.setLevel(level);
+    hud.resetMoves();
     play.setEditing(true);
     commit();
     play.frame();
@@ -506,6 +513,11 @@ export function mountEditor(play: PlayHandles, setStatus: (text: string) => void
     }
     void open(level + 1);
   };
+
+  document.getElementById('hud-settings')?.addEventListener('click', () => {
+    settingsOpen = !settingsOpen;
+    render();
+  });
 
   const canvas = document.querySelector('#stage canvas');
   if (!(canvas instanceof HTMLCanvasElement)) return { advance };

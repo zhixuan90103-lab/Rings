@@ -7,8 +7,6 @@
 import * as THREE from 'three';
 import { Capacitor } from '@capacitor/core';
 import {
-  DESIGN_HEIGHT,
-  DESIGN_WIDTH,
   applyStageTransform,
   computeStageLayout,
   watchStageLayout,
@@ -18,7 +16,7 @@ import {
   mountDevicePreview,
   type DevicePreviewController,
 } from './adapt/devicePreview';
-import { applyNativeClass, applySafeAreaCssVars, readSafeAreaInsets } from './adapt/safeArea';
+import { applyNativeClass, applySafeAreaCssVars } from './adapt/safeArea';
 import { createRenderer, resizeToDesign } from './create-renderer';
 import { haptics } from './utils/haptics';
 import { mountPlay } from './game/play';
@@ -28,10 +26,22 @@ const shell = document.getElementById('shell')!;
 const viewportEl = document.getElementById('viewport')!;
 const stage = document.getElementById('stage')!;
 const statusEl = document.getElementById('status');
+const levelEl = document.getElementById('hud-level');
+const counterEl = document.getElementById('hud-counter');
 const logEl = document.getElementById('haptic-log');
+let score = 0;
 
 function setStatus(text: string): void {
   if (statusEl) statusEl.textContent = text;
+}
+
+function setLevel(level: number): void {
+  if (levelEl) levelEl.textContent = String(level);
+}
+
+function setScore(count: number): void {
+  score = count;
+  if (counterEl) counterEl.textContent = String(score);
 }
 
 function setLog(text: string): void {
@@ -41,18 +51,13 @@ function setLog(text: string): void {
 async function boot(): Promise<void> {
   applyNativeClass();
 
-  const platform = Capacitor.getPlatform();
   const native = Capacitor.isNativePlatform();
 
-  setStatus(
-    `platform: ${platform} | native: ${native}\n` +
-      `design: ${DESIGN_WIDTH}×${DESIGN_HEIGHT}\n` +
-      `creating WebGPU…`,
-  );
+  setStatus('');
 
   const renderer = await createRenderer({ container: stage });
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xfbf0e0);
+  scene.background = new THREE.Color(0xf6f1e8);
 
   scene.add(new THREE.HemisphereLight(0xfff8f2, 0xf3d7be, 1.55));
   const key = new THREE.DirectionalLight(0xffffff, 0.85);
@@ -98,17 +103,8 @@ async function boot(): Promise<void> {
     camera,
     canvas: renderer.domElement,
     getLayout: () => latestLayout,
-    onStatus: (level) => {
-      const safe = readSafeAreaInsets();
-      const layout = latestLayout;
-      setStatus(
-        `${level} · 先把圆环开口转到银箍上，再把那根杆滑出去\n` +
-          (layout
-            ? `design ${DESIGN_WIDTH}×${DESIGN_HEIGHT} · scale ${layout.scale.toFixed(3)}\n`
-            : '') +
-          `safe T${Math.round(safe.top)} B${Math.round(safe.bottom)}`,
-      );
-    },
+    onStatus: () => {},
+    onScore: (points) => setScore(score + points),
     onRelease: () => {
       if (haptics.isNativeIos() && haptics.isPluginAvailable()) {
         void haptics.impact('light');
@@ -148,7 +144,7 @@ async function boot(): Promise<void> {
 
   // Optional: document.body.classList.add('debug-safe-area')
 
-  advanceLevel = mountEditor(play, setStatus).advance;
+  advanceLevel = mountEditor(play, setStatus, { setLevel, resetMoves: () => setScore(0) }).advance;
 
   if (haptics.isNativeIos()) {
     setLog(

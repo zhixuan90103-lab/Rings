@@ -12,6 +12,7 @@
 | 来源 | 钉住什么 |
 |------|----------|
 | 实机（2026-10-26） | 拖动只改角度；抬手才结算；拖动中已经对齐也不离场 |
+| 实机（2026-10-28） | 柄不是单独零件。被嵌的环转动时柄的角度不变，不因此停。长着柄的环在柄还嵌着时不能转。点在银卡扣上选那根杆 |
 | `../Rotate Rings游戏分析/Rotate-Rings-游戏分析.md` | 零件、拖动中可见的阻挡、清盘过关 |
 | 拆解重点摘要（同日对话） | 不能删的七条：单目标、绕心转、缺口对齐、未解则停、自动离场、清盘、顺序是解 |
 | [MDN Pointer Events](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events) | `pointerdown` 起捕获，`pointerup` / `pointercancel` 结束。只用于手势会话 |

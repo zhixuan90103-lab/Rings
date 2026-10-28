@@ -1,13 +1,13 @@
 import { beginTwoFinger, boardBounds, cameraForFit, cameraForPinch, choosePinchLock, clampCamera, designNdc, editorFrame, editorPan, editorPanT, editorZoom, editorZoomT, frameFor, frameLift, stepTwoFinger, worldFromDesign, zoomCap } from './camera';
 import { connectorReach } from './parts';
-import { gapCovers, signedDelta } from './angle';
+import { gapCovers, signedDelta, wrapAngle } from './angle';
 import { barById, moveBar, ringById, rotateRing, settle, beginDrag, cancelDrag, dragTo, ringFreeArcs } from './board';
 
 import { clampAngle, freeArcs, pinForbidden } from './interval';
 import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
 import { emptyBoard, seatConnectors, syncCatchPins } from './levelio';
 import { dragEffect } from './feedback';
-import { barHitsRing, barOverlapAmount, barsOverlapAmount, barStillInBuckle, buckleOverlapAmount, connectorHitsRing, strikePoint } from './volume';
+import { barHitsRing, barOverlapAmount, barsOverlapAmount, barStillInBuckle, buckleOverlapAmount, claspCenterDistance, connectorCoreDepth, connectorHitsRing, strikePoint } from './volume';
 import { BAR_RECOIL_WORLD, RING_RECOIL_MAX, WOBBLE_CYCLES, WOBBLE_SECONDS, beginRecoil, heldSign, releaseHold, stepRecoil, wobbleOffset } from './recoil';
 import { ringChipPoints } from './shatter';
 import { DESIGN_HEIGHT, DESIGN_WIDTH } from '../adapt/design';
@@ -82,7 +82,28 @@ const greenNested = ringById(basic, 'green')!.theta;
 rotateRing(basic, ringById(basic, 'green')!, 0.6);
 assert(Math.abs(signedDelta(greenNested, ringById(basic, 'green')!.theta)) < 0.08, 'the nested clasp holds the green ring');
 rotateRing(basic, ringById(basic, 'green')!, -0.6);
-assert(Math.abs(signedDelta(greenNested, ringById(basic, 'green')!.theta)) < 0.08, 'the nested clasp blocks both ways');
+assert(Math.abs(signedDelta(greenNested, ringById(basic, 'green')!.theta)) < 0.08, 'a seated clasp blocks the owner both ways');
+{
+  const tilted = levelBasic();
+  const owner = ringById(tilted, 'green')!;
+  const captive = ringById(tilted, 'blue')!;
+  const seat = claspCenterDistance(owner, captive);
+  owner.theta = wrapAngle(owner.theta + 0.22);
+  const off = claspCenterDistance(owner, captive);
+  assert(off > seat + 0.05, 'turning the owner walks the arc center off the captive ring');
+  assert(connectorCoreDepth(owner, captive) > 0.2, 'the tilted arc cuts the captive band');
+  const ownerOff = owner.theta;
+  const captiveOff = captive.theta;
+  rotateRing(tilted, owner, 0.5);
+  assert(Math.abs(signedDelta(ownerOff, owner.theta)) < 0.08, 'a cutting arc will not tilt any farther');
+  rotateRing(tilted, owner, -0.5);
+  assert(Math.abs(signedDelta(ownerOff, owner.theta)) > 0.15, 'the owner can turn the arc back toward the seat');
+  owner.theta = ownerOff;
+  rotateRing(tilted, captive, 0.8);
+  assert(Math.abs(signedDelta(captiveOff, captive.theta)) < 0.08, 'the captive ring cannot turn through a cutting arc');
+  rotateRing(tilted, captive, -0.8);
+  assert(Math.abs(signedDelta(captiveOff, captive.theta)) < 0.08, 'the captive ring cannot turn off the other way either');
+}
 assert(strikePoint(basic, 'ring', 'green', 1) !== null, 'a locked ring still has a contact for the hit');
 const blue = ringById(basic, 'blue')!;
 const joint = basic.pins.find((pin) => pin.id === 'joint-green')!;
@@ -246,7 +267,9 @@ stacked.pins.push({
 const overlap = listCandidates(stacked, -0.55, 0, pad);
 assert(overlap.filter((hit) => hit.place === 'solid').length === 2, 'a handle and a ring are both solids');
 const preferHost = chooseIntent(stacked, overlap, -0.55, 0, -0.55, 0, false);
-assert(preferHost?.id === 'host', 'a nested handle cannot turn, so the ring under it wins');
+assert(preferHost == null, 'a cutting arc sticks both rings, so the press waits');
+const heldHost = chooseIntent(stacked, overlap, -0.55, 0, -0.55, 0, true);
+assert(heldHost?.id === 'host', 'with both rings stuck, the press stays on the ring under the handle');
 const inHole = emptyBoard();
 inHole.volumes = false;
 inHole.rings.push(

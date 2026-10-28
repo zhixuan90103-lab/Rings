@@ -360,6 +360,105 @@ function inClasp(arc: ClaspArc, x: number, y: number): boolean {
   return Math.abs(signedDelta(arc.mid, Math.atan2(y - arc.cy, x - arc.cx))) <= arc.half;
 }
 
+/**
+ * How far an arc may sit off the other ring's center and still count as seated.
+ * Inside this distance the captive ring can still turn the gap onto the handle.
+ */
+export const CLASP_SEAT = 0.07;
+
+/**
+ * Core overlap at or under this does not block. The drawn clasp is wider than
+ * this core, so a light graze still lets the player turn back onto the seat.
+ */
+const CORE_SLACK = 0.012;
+
+function coreBox(box: { x: number; y: number; angle: number; length: number; width: number }) {
+  return {
+    ...box,
+    length: Math.max(0.02, box.length * 0.72),
+    width: Math.max(0.02, box.width * 0.62),
+  };
+}
+
+function coreArc(arc: ClaspArc): ClaspArc {
+  return {
+    ...arc,
+    half: Math.max(0.04, arc.half * 0.78),
+    width: arc.width * 0.62,
+  };
+}
+
+function pointBandDepth(ring: RingBody, x: number, y: number): number {
+  if (!ringHolds(ring, x, y)) return 0;
+  const radial = Math.hypot(x - ring.x, y - ring.y);
+  const innerGap = radial - ring.inner;
+  const outerGap = ring.outer - radial;
+  if (innerGap <= 0 || outerGap <= 0) return Math.min(hornRadius(ring), 0.02);
+  return Math.min(innerGap, outerGap);
+}
+
+/** Inset stem and clasp buried in the other ring. Zero means the core is clear. */
+export function connectorCoreDepth(owner: RingBody, other: RingBody): number {
+  if (owner.connectors.length === 0) return 0;
+  let amount = 0;
+  for (const box of connectorBox(owner)) {
+    const core = coreBox(box);
+    const n = 4;
+    for (let ix = 0; ix <= n; ix++) {
+      for (let iy = 0; iy <= 2; iy++) {
+        const lx = -core.length / 2 + (core.length * ix) / n;
+        const ly = -core.width / 2 + (core.width * iy) / 2;
+        const c = Math.cos(core.angle);
+        const s = Math.sin(core.angle);
+        amount += pointBandDepth(other, core.x + c * lx - s * ly, core.y + s * lx + c * ly);
+      }
+    }
+  }
+  for (const arc of claspArcs(owner)) {
+    const core = coreArc(arc);
+    for (let i = 0; i <= 6; i++) {
+      const a = core.mid - core.half + (2 * core.half * i) / 6;
+      for (const k of [-0.35, 0, 0.35]) {
+        const radius = core.radius + core.width * k;
+        amount += pointBandDepth(other, core.cx + Math.cos(a) * radius, core.cy + Math.sin(a) * radius);
+      }
+    }
+  }
+  return amount;
+}
+
+/** Distance from this clasp's arc center to the other ring center. */
+export function claspCenterDistance(owner: RingBody, other: RingBody): number {
+  let best = Infinity;
+  for (const arc of claspArcs(owner)) {
+    best = Math.min(best, Math.hypot(arc.cx - other.x, arc.cy - other.y));
+  }
+  return best;
+}
+
+/**
+ * A drag step against one clasp.
+ * Seated and buried, the owner stays put and the captive ring may still turn.
+ * Off the seat, a cutting arc only allows the step that comes back toward the seat
+ * or that pulls the core out. A graze under `CORE_SLACK` never blocks.
+ */
+export function claspStepBlocked(
+  kind: 'owner' | 'captive',
+  beforeDist: number,
+  beforeDepth: number,
+  afterDist: number,
+  afterDepth: number,
+): boolean {
+  if (kind === 'captive') {
+    if (afterDist <= CLASP_SEAT || afterDepth <= CORE_SLACK) return false;
+    if (beforeDepth <= CORE_SLACK) return true;
+    return afterDepth > beforeDepth - 0.004;
+  }
+  if (beforeDist <= CLASP_SEAT && beforeDepth > CORE_SLACK) return true;
+  if (beforeDepth <= CORE_SLACK) return afterDist > CLASP_SEAT && afterDepth > CORE_SLACK;
+  return afterDist > beforeDist - 0.002;
+}
+
 /** Stem and bent handle against the other ring. */
 export function connectorHitsRing(owner: RingBody, other: RingBody): boolean {
   if (owner.connectors.length === 0) return false;

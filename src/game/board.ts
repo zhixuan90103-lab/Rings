@@ -16,7 +16,16 @@ import {
   type CircInterval,
   type LinInterval,
 } from './interval';
-import { barOverlapAmount, barsOverlapAmount, barStillInBuckle, buckleOverlapAmount, connectorHitsRing } from './volume';
+import {
+  barOverlapAmount,
+  barsOverlapAmount,
+  barStillInBuckle,
+  buckleOverlapAmount,
+  claspCenterDistance,
+  claspStepBlocked,
+  connectorCoreDepth,
+  connectorHitsRing,
+} from './volume';
 
 export type RingBody = {
   id: string;
@@ -184,8 +193,37 @@ function barBlockDepth(board: Board, bar: BarBody, t: number): number {
   return depth;
 }
 
-function claspLocks(board: Board, ring: RingBody): boolean {
-  return board.rings.some((other) => other.id !== ring.id && connectorHitsRing(ring, other));
+type ClaspTie = { kind: 'owner' | 'captive'; dist: number; depth: number };
+
+function claspTies(board: Board, ring: RingBody): ClaspTie[] {
+  const ties: ClaspTie[] = [];
+  for (const other of board.rings) {
+    if (other.id === ring.id) continue;
+    if (ring.connectors.length > 0) {
+      ties.push({
+        kind: 'owner',
+        dist: claspCenterDistance(ring, other),
+        depth: connectorCoreDepth(ring, other),
+      });
+    }
+    if (other.connectors.length > 0) {
+      ties.push({
+        kind: 'captive',
+        dist: claspCenterDistance(other, ring),
+        depth: connectorCoreDepth(other, ring),
+      });
+    }
+  }
+  return ties;
+}
+
+function claspBlocked(before: ClaspTie[], after: ClaspTie[]): boolean {
+  const n = Math.min(before.length, after.length);
+  for (let i = 0; i < n; i++) {
+    if (before[i].kind !== after[i].kind) continue;
+    if (claspStepBlocked(before[i].kind, before[i].dist, before[i].depth, after[i].dist, after[i].depth)) return true;
+  }
+  return false;
 }
 
 export function rotateRing(board: Board, ring: RingBody, delta: number): void {
@@ -201,12 +239,10 @@ export function rotateRing(board: Board, ring: RingBody, delta: number): void {
     const step = Math.min(0.012, left);
     const previous = ring.theta;
     const depthBefore = ringBlockDepth(board, ring);
-    const claspBefore = claspLocks(board, ring);
+    const tiesBefore = claspTies(board, ring);
     ring.theta = wrapAngle(ring.theta + sign * step);
     syncPins(board);
-    const claspNow = claspLocks(board, ring);
-    const claspEntered = !claspBefore && claspNow;
-    if (claspBefore || claspEntered || overlapGrew(depthBefore, ringBlockDepth(board, ring))) {
+    if (claspBlocked(tiesBefore, claspTies(board, ring)) || overlapGrew(depthBefore, ringBlockDepth(board, ring))) {
       ring.theta = previous;
       syncPins(board);
       return;

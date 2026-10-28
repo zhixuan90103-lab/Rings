@@ -213,21 +213,35 @@ function ringSliceBlocked(board: Board, ring: RingBody, from: number, to: number
   return claspDragBlocked(tiesBefore, claspPoses(board, ring)) || overlapGrew(depthBefore, ringBlockDepth(board, ring));
 }
 
-/** How far `step` can go. The far pose is never kept just because it looks legal after a crossing. */
+/** Largest prefix of `step` that stays legal. A failed far pose is not kept. */
+function takePrefix(step: number, fine: number, blocked: (distance: number) => boolean, apply: (distance: number) => void): number {
+  if (!blocked(step)) {
+    apply(step);
+    return step;
+  }
+  let lo = 0;
+  let hi = step;
+  while (hi - lo > fine) {
+    const mid = (lo + hi) / 2;
+    if (!blocked(mid)) lo = mid;
+    else hi = mid;
+  }
+  apply(lo);
+  return lo;
+}
+
 function takeRing(board: Board, ring: RingBody, sign: number, step: number): number {
   const from = ring.theta;
   const at = (distance: number) => wrapAngle(from + sign * distance);
-  if (!ringSliceBlocked(board, ring, from, at(step))) return step;
-  let lo = 0;
-  let hi = step;
-  while (hi - lo > FINE_ANGLE) {
-    const mid = (lo + hi) / 2;
-    if (!ringSliceBlocked(board, ring, from, at(mid))) lo = mid;
-    else hi = mid;
-  }
-  ring.theta = at(lo);
-  syncPins(board);
-  return lo;
+  return takePrefix(
+    step,
+    FINE_ANGLE,
+    (distance) => ringSliceBlocked(board, ring, from, at(distance)),
+    (distance) => {
+      ring.theta = at(distance);
+      syncPins(board);
+    },
+  );
 }
 
 export function rotateRing(board: Board, ring: RingBody, delta: number): void {
@@ -291,19 +305,14 @@ function barSliceBlocked(board: Board, bar: BarBody, from: number, to: number): 
 
 function takeBar(board: Board, bar: BarBody, sign: number, step: number): number {
   const from = bar.t;
-  if (!barSliceBlocked(board, bar, from, from + sign * step)) {
-    bar.t = from + sign * step;
-    return step;
-  }
-  let lo = 0;
-  let hi = step;
-  while (hi - lo > FINE_T) {
-    const mid = (lo + hi) / 2;
-    if (!barSliceBlocked(board, bar, from, from + sign * mid)) lo = mid;
-    else hi = mid;
-  }
-  bar.t = from + sign * lo;
-  return lo;
+  return takePrefix(
+    step,
+    FINE_T,
+    (distance) => barSliceBlocked(board, bar, from, from + sign * distance),
+    (distance) => {
+      bar.t = from + sign * distance;
+    },
+  );
 }
 
 export function moveBar(board: Board, bar: BarBody, target: number): void {

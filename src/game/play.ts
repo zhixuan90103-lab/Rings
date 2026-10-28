@@ -464,14 +464,11 @@ export function mountPlay(options: {
       return;
     }
     const samples = event.getCoalescedEvents?.() ?? [];
-    const events = samples.length > 0 ? samples : [event];
+    const sample = samples.length > 0 ? samples[samples.length - 1] : event;
     const before = dragPose(drag);
     let rejected = 0;
-    for (const sample of events) {
-      const world = worldFromEvent(sample, false);
-      if (!world) continue;
-      rejected += dragTo(board, drag, world.x, world.y);
-    }
+    const world = worldFromEvent(sample, false);
+    if (world) rejected = dragTo(board, drag, world.x, world.y);
     const after = dragPose(drag);
     const applied = drag.kind === 'ring' ? signedDelta(before, after) : after - before;
     if (Math.abs(applied) >= 1e-4) {

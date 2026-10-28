@@ -11,17 +11,19 @@ import { PART, buckleMetrics, connectorLayout } from './parts';
 
 /** Settled shatter. Placement, size, and motion all read from here. */
 export const SHATTER = {
-  chip: 0.075,
+  chip: 0.1,
   step: 0.16,
-  depth: 0.08,
-  bevel: 0.015,
+  depth: 0.1,
+  bevel: 0.018,
   scaleMin: 0.55,
   scaleSpan: 0.6,
   speedMax: 1.6,
+  /** World distance the fastest chip has already travelled when it appears. */
+  lead: 0.16,
   gravity: -30,
-  gravityIn: 0.28,
-  shrinkSeconds: 0.55,
-  shrinkFloor: 0.12,
+  gravityIn: 0.12,
+  shrinkSeconds: 0.75,
+  shrinkFloor: 0.45,
   buckle: 0xc8c7c5,
 } as const;
 
@@ -40,6 +42,9 @@ export type Shatter = {
   age: number;
   dead: boolean;
 };
+
+const CHIP_POOL = 128;
+const shatterPool: Shatter[] = [];
 
 let chipGeometry: THREE.ExtrudeGeometry | null = null;
 
@@ -173,6 +178,33 @@ export function buckleChipPoints(width: number): { x: number; y: number }[] {
   return local;
 }
 
+function takeShatter(count: number): Shatter {
+  const index = shatterPool.findIndex((slot) => slot.x.length >= count);
+  const ready = index >= 0 ? shatterPool.splice(index, 1)[0] : null;
+  if (ready) return ready;
+  const capacity = Math.max(CHIP_POOL, count);
+  const material = new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0.02 });
+  const mesh = new THREE.InstancedMesh(sharedChipGeometry(), material, capacity);
+  mesh.frustumCulled = false;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  return {
+    mesh,
+    x: new Float32Array(capacity),
+    y: new Float32Array(capacity),
+    vx: new Float32Array(capacity),
+    vy: new Float32Array(capacity),
+    spin: new Float32Array(capacity),
+    pitch: new Float32Array(capacity),
+    roll: new Float32Array(capacity),
+    theta: new Float32Array(capacity),
+    scale: new Float32Array(capacity),
+    count: 0,
+    age: 0,
+    dead: false,
+  };
+}
+
 export function makeShatter(
   parent: THREE.Object3D,
   points: { x: number; y: number }[],
@@ -182,21 +214,15 @@ export function makeShatter(
 ): Shatter | null {
   if (points.length === 0) return null;
   const count = points.length;
-  const material = new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.02 });
-  const mesh = new THREE.InstancedMesh(sharedChipGeometry(), material, count);
-  mesh.frustumCulled = false;
-  mesh.castShadow = false;
-  mesh.receiveShadow = false;
+  const shatter = takeShatter(count);
+  const { mesh } = shatter;
+  const material = mesh.material;
+  if (material instanceof THREE.MeshStandardMaterial) material.color.setHex(color);
+  mesh.count = count;
+  mesh.visible = true;
   const dummy = new THREE.Object3D();
-  const x = new Float32Array(count);
-  const y = new Float32Array(count);
-  const vx = new Float32Array(count);
-  const vy = new Float32Array(count);
-  const spin = new Float32Array(count);
-  const pitch = new Float32Array(count);
-  const roll = new Float32Array(count);
-  const theta = new Float32Array(count);
-  const scale = new Float32Array(count);
+  const { x } = shatter;
+  const { y, vx, vy, spin, pitch, roll, theta, scale } = shatter;
   for (let i = 0; i < count; i++) {
     x[i] = points[i].x;
     y[i] = points[i].y;
@@ -204,13 +230,36 @@ export function makeShatter(
     const dy = y[i] - originY;
     const dist = Math.hypot(dx, dy) || 1;
     const speed = Math.random() * SHATTER.speedMax;
+    const lead = (speed / SHATTER.speedMax) * SHATTER.lead;
     vx[i] = (dx / dist) * speed;
     vy[i] = (dy / dist) * speed;
+    x[i] += (dx / dist) * lead;
+    y[i] += (dy / dist) * lead;
     spin[i] = (Math.random() - 0.5) * 4;
     pitch[i] = (Math.random() - 0.5) * 5;
     roll[i] = (Math.random() - 0.5) * 5;
     theta[i] = Math.random() * Math.PI * 2;
     scale[i] = SHATTER.scaleMin + Math.random() * SHATTER.scaleSpan;
+  }
+  let shiftX = 0;
+  let shiftY = 0;
+  let driftX = 0;
+  let driftY = 0;
+  for (let i = 0; i < count; i++) {
+    shiftX += x[i] - points[i].x;
+    shiftY += y[i] - points[i].y;
+    driftX += vx[i];
+    driftY += vy[i];
+  }
+  shiftX /= count;
+  shiftY /= count;
+  driftX /= count;
+  driftY /= count;
+  for (let i = 0; i < count; i++) {
+    x[i] -= shiftX;
+    y[i] -= shiftY;
+    vx[i] -= driftX;
+    vy[i] -= driftY;
     dummy.position.set(x[i], y[i], FALL_Z);
     dummy.rotation.set(0, 0, theta[i]);
     dummy.scale.setScalar(scale[i]);
@@ -218,15 +267,19 @@ export function makeShatter(
     mesh.setMatrixAt(i, dummy.matrix);
   }
   mesh.instanceMatrix.needsUpdate = true;
+  shatter.count = count;
+  shatter.age = 0;
+  shatter.dead = false;
   parent.add(mesh);
-  return { mesh, x, y, vx, vy, spin, pitch, roll, theta, scale, count, age: 0, dead: false };
+  stepShatters([shatter], -1e9, 1 / 60);
+  return shatter;
 }
 
-/** Gravity grows in over `gravityIn`, then stays at `gravity`. One continuous arc. */
+/** Gravity is already partly on, then reaches `gravity` over `gravityIn`. */
 export function shatterGravity(age: number): number {
   const u = Math.min(1, age / SHATTER.gravityIn);
   const ease = u * u * (3 - 2 * u);
-  return SHATTER.gravity * ease;
+  return SHATTER.gravity * (0.55 + 0.45 * ease);
 }
 
 /** Shrink starts as the arc bends down, and floors so chips stay visible. */
@@ -262,9 +315,10 @@ export function stepShatters(shatters: Shatter[], viewBottom: number, dt: number
 }
 
 export function disposeShatter(shatter: Shatter): void {
-  shatter.mesh.parent?.remove(shatter.mesh);
-  shatter.mesh.material instanceof THREE.Material && shatter.mesh.material.dispose();
-  shatter.mesh.dispose();
+  shatter.mesh.removeFromParent();
+  shatter.mesh.count = 0;
+  shatter.mesh.visible = false;
+  shatterPool.push(shatter);
 }
 
 export function releaseRing(parent: THREE.Object3D, ring: RingBody, color: number): Shatter | null {
@@ -278,6 +332,10 @@ export function releaseBar(parent: THREE.Object3D, bar: BarBody, color: number):
 }
 
 /** Buckle pose is the marker already on screen: position and Z rotation. */
+sharedChipGeometry();
+shatterPool.push(takeShatter(CHIP_POOL));
+shatterPool.push(takeShatter(CHIP_POOL));
+
 export function releaseBuckle(
   parent: THREE.Object3D,
   width: number,

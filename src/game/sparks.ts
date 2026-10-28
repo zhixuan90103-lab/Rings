@@ -13,33 +13,53 @@ export type SparkBurst = {
   duration: number;
 };
 
-/** Small discs. WebGPU drops textured points that have no uv. */
-export function makeSparkBurst(x: number, y: number, color: number): SparkBurst {
+const sparkGeometry = new THREE.CircleGeometry(SPARK_RADIUS, 10);
+const sparkPool: SparkBurst[] = [];
+
+function createSparkBurst(): SparkBurst {
   const root = new THREE.Group();
   const bits: THREE.Mesh[] = [];
-  const velocities = new Float32Array(SPARK_COUNT * 2);
-  const life = new Float32Array(SPARK_COUNT);
-  const geometry = new THREE.CircleGeometry(SPARK_RADIUS, 10);
+  const material = new THREE.MeshBasicMaterial({
+    depthTest: false,
+    depthWrite: false,
+  });
   for (let i = 0; i < SPARK_COUNT; i++) {
-    const mesh = new THREE.Mesh(
-      geometry,
-      new THREE.MeshBasicMaterial({
-        color,
-        depthTest: false,
-        depthWrite: false,
-      }),
-    );
-    mesh.position.set(x, y, 0.45);
+    const mesh = new THREE.Mesh(sparkGeometry, material);
     mesh.renderOrder = 20;
+    mesh.visible = false;
     root.add(mesh);
     bits.push(mesh);
+  }
+  return {
+    root,
+    bits,
+    velocities: new Float32Array(SPARK_COUNT * 2),
+    life: new Float32Array(SPARK_COUNT),
+    age: 0,
+    duration: 0.34,
+  };
+}
+
+/** Small discs. WebGPU drops textured points that have no uv. */
+export function makeSparkBurst(x: number, y: number, color: number): SparkBurst {
+  const burst = sparkPool.pop() ?? createSparkBurst();
+  const material = burst.bits[0].material;
+  if (material instanceof THREE.MeshBasicMaterial) material.color.setHex(color);
+  burst.age = 0;
+  burst.root.visible = true;
+  for (let i = 0; i < SPARK_COUNT; i++) {
+    const mesh = burst.bits[i];
+    mesh.visible = true;
+    mesh.position.set(x, y, 0.45);
+    mesh.scale.setScalar(1);
     const angle = Math.random() * Math.PI * 2;
     const speed = 0.55 + Math.random() * 1.1;
-    velocities[i * 2] = Math.cos(angle) * speed;
-    velocities[i * 2 + 1] = Math.sin(angle) * speed + 0.2;
-    life[i] = 0.16 + Math.random() * 0.16;
+    burst.velocities[i * 2] = Math.cos(angle) * speed;
+    burst.velocities[i * 2 + 1] = Math.sin(angle) * speed + 0.2;
+    burst.life[i] = 0.16 + Math.random() * 0.16;
   }
-  return { root, bits, velocities, life, age: 0, duration: 0.34 };
+  stepSparkBurst(burst, 1 / 60);
+  return burst;
 }
 
 export function stepSparkBurst(burst: SparkBurst, dt: number): boolean {
@@ -60,8 +80,11 @@ export function stepSparkBurst(burst: SparkBurst, dt: number): boolean {
   return burst.age >= burst.duration;
 }
 
+sparkPool.push(createSparkBurst(), createSparkBurst());
+
 export function disposeSparkBurst(burst: SparkBurst): void {
-  const geometry = burst.bits[0]?.geometry;
-  for (const mesh of burst.bits) (mesh.material as THREE.Material).dispose();
-  geometry?.dispose();
+  burst.root.removeFromParent();
+  burst.root.visible = false;
+  for (const mesh of burst.bits) mesh.visible = false;
+  sparkPool.push(burst);
 }

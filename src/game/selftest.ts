@@ -1,7 +1,7 @@
 import { beginTwoFinger, boardBounds, cameraForFit, cameraForPinch, choosePinchLock, clampCamera, designNdc, editorFrame, editorPan, editorPanT, editorZoom, editorZoomT, frameFor, frameLift, stepTwoFinger, worldFromDesign, zoomCap } from './camera';
 import { connectorReach } from './parts';
 import { gapCovers, signedDelta, wrapAngle } from './angle';
-import { barById, moveBar, ringById, rotateRing, settle, beginDrag, cancelDrag, dragTo, ringFreeArcs } from './board';
+import { barById, moveBar, nudgeRing, ringById, rotateRing, settle, beginDrag, cancelDrag, dragTo, ringFreeArcs } from './board';
 
 import { clampAngle, freeArcs, pinForbidden } from './interval';
 import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
@@ -701,6 +701,47 @@ assert(inside.zoom === fit.maxZoom, 'the edge clamp keeps the pinched zoom');
 const seen = worldFromDesign((usable.left + usable.right) / 2, (usable.top + usable.bottom) / 2, inside.x, inside.y, inside.zoom);
 assert(seen.x >= box.minX - 1e-6 && seen.x <= box.maxX + 1e-6, 'zoomed pan stays inside the bounds');
 assert(seen.y >= box.minY - 1e-6 && seen.y <= box.maxY + 1e-6, 'zoomed pan stays inside the bounds');
+
+const nearPin = emptyBoard();
+nearPin.volumes = false;
+nearPin.rings.push({
+  id: 'a',
+  kind: 'ring',
+  x: 0,
+  y: 0,
+  inner: 0.4,
+  outer: 0.7,
+  gap: 1.2,
+  theta: 0,
+  connectors: [],
+});
+nearPin.pins.push({
+  id: 'p',
+  ownerId: null,
+  localAngle: 0,
+  localRadius: 0,
+  x: Math.cos(0.68) * 0.55,
+  y: Math.sin(0.68) * 0.55,
+  role: 'block',
+  limitRingId: null,
+  stopHalf: 0,
+});
+const nearRing = ringById(nearPin, 'a')!;
+nudgeRing(nearPin, nearRing, -1, 0.12);
+assert(Math.abs(nearRing.theta) > 0.05, 'a pin inside the pad still finishes against the last drag');
+nearRing.theta = 0;
+nudgeRing(nearPin, nearRing, 1, 0.02);
+assert(Math.abs(nearRing.theta) < 1e-4, 'a pin farther than the pad stays latched');
+nudgeRing(nearPin, nearRing, 1, 0.12);
+assert(nearPin.pins.some((pin) => pin.id === 'p'), 'the nudge only turns; settle still drops the pin');
+const nudged = settle(nearPin, { kind: 'ring', id: 'a', theta: 0, x: 0, y: 0 });
+assert(nudged.includes('a') && nearPin.pins.length === 0, 'a pin within the pad releases on lift');
+const deepClasp = levelBasic();
+const deepBlue = ringById(deepClasp, 'blue')!;
+const deepTheta = deepBlue.theta;
+nudgeRing(deepClasp, deepBlue, 1, 0.05);
+nudgeRing(deepClasp, deepBlue, -1, 0.05);
+assert(Math.abs(signedDelta(deepTheta, deepBlue.theta)) < 1e-4, 'a clasp still deep in the band is not finished by the pad');
 
 const praise = freshPraise();
 assert(notePraiseClear(praise, 1) === 0, 'the first single clear is silent');

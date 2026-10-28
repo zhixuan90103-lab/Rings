@@ -344,23 +344,57 @@ function retainers(board: Board, id: string): number {
   return board.latches.filter((latch) => latch.barId === id).length;
 }
 
+/** This drag would drop the pin. World pins need the gap. A handle also needs the clasp clear of the solid. */
+function pinReleased(board: Board, ring: RingBody, pin: Board['pins'][number]): boolean {
+  if ((pin.role !== 'block' && pin.role !== 'catch') || pin.ownerId === ring.id) return false;
+  if (!pinHolds(ring, pin)) return false;
+  const alpha = Math.atan2(pin.y - ring.y, pin.x - ring.x);
+  if (!gapCovers(ring.theta, alpha, ring.gap)) return false;
+  if (board.volumes && pin.role === 'catch' && pin.ownerId) {
+    const owner = ringById(board, pin.ownerId);
+    return !!owner && !connectorHitsRing(owner, ring);
+  }
+  return true;
+}
+
+function nudgeRingOneWay(board: Board, ring: RingBody, sign: number, maxTurn: number): boolean {
+  const start = ring.theta;
+  const depth = ringBlockDepth(board, ring);
+  const ties = claspTies(board, ring);
+  for (let walked = 0.012; walked <= maxTurn + 1e-6; walked += 0.012) {
+    ring.theta = wrapAngle(start + sign * Math.min(walked, maxTurn));
+    syncPins(board);
+    if (!board.pins.some((pin) => pinReleased(board, ring, pin))) continue;
+    if (overlapGrew(depth, ringBlockDepth(board, ring)) || claspBlocked(ties, claspTies(board, ring))) break;
+    return true;
+  }
+  ring.theta = start;
+  syncPins(board);
+  return false;
+}
+
+/**
+ * On lift, finish a release that is within `pad` world units along the band.
+ * Tries the drag direction first, then the other way, so a stop on the near
+ * lip still clears. Anything farther is put back. `pad` is the 6% sleeve length.
+ */
+export function nudgeRing(board: Board, ring: RingBody, sign: number, pad: number): void {
+  if (pad <= 0) return;
+  syncPins(board);
+  if (board.pins.some((pin) => pinReleased(board, ring, pin))) return;
+  const lever = Math.max((ring.inner + ring.outer) / 2, 1e-4);
+  const maxTurn = pad / lever;
+  const first = sign === 0 ? 1 : sign;
+  if (nudgeRingOneWay(board, ring, first, maxTurn)) return;
+  nudgeRingOneWay(board, ring, -first, maxTurn);
+}
+
 export function settle(board: Board, drag: Drag): string[] {
   syncPins(board);
   if (drag.kind === 'ring') {
     const ring = ringById(board, drag.id);
     if (!ring) return [];
-    board.pins = board.pins.filter((pin) => {
-      if ((pin.role !== 'block' && pin.role !== 'catch') || pin.ownerId === ring.id) return true;
-      if (board.volumes && pin.role === 'catch' && pin.ownerId) {
-        const owner = ringById(board, pin.ownerId);
-        if (!owner || !pinHolds(ring, pin)) return true;
-        const alpha = Math.atan2(pin.y - ring.y, pin.x - ring.x);
-        return !(gapCovers(ring.theta, alpha, ring.gap) && !connectorHitsRing(owner, ring));
-      }
-      if (!pinHolds(ring, pin)) return true;
-      const alpha = Math.atan2(pin.y - ring.y, pin.x - ring.x);
-      return !gapCovers(ring.theta, alpha, ring.gap);
-    });
+    board.pins = board.pins.filter((pin) => !pinReleased(board, ring, pin));
   } else {
     const bar = barById(board, drag.id);
     if (!bar) return [];

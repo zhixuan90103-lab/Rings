@@ -18,6 +18,7 @@ import {
   cancelDrag,
   dragTo,
   moveBar,
+  nudgeRing,
   ringById,
   settle,
   syncPins,
@@ -423,6 +424,15 @@ export function mountPlay(options: {
         requested = t1 - t0;
         noteSlide(requested);
       }
+    } else {
+      const ring = ringById(board, drag.id);
+      if (ring) {
+        const lever = (ring.inner + ring.outer) / 2;
+        const rx = drag.x - ring.x;
+        const ry = drag.y - ring.y;
+        const lever2 = Math.max(rx * rx + ry * ry, lever * lever);
+        noteSlide((rx * (world.y - drag.y) - ry * (world.x - drag.x)) / lever2);
+      }
     }
     const rejected = dragTo(board, drag, world.x, world.y);
     const after = dragPose(drag);
@@ -598,6 +608,22 @@ export function mountPlay(options: {
           }
         }
       }
+      if (samples.length > 1 && drag.kind === 'ring') {
+        const ring = ringById(board, drag.id);
+        if (ring) {
+          const lever = (ring.inner + ring.outer) / 2;
+          let prev = drag;
+          for (const point of samples) {
+            const at = worldFromEvent(point, false);
+            if (!at) continue;
+            const rx = prev.x - ring.x;
+            const ry = prev.y - ring.y;
+            const lever2 = Math.max(rx * rx + ry * ry, lever * lever);
+            noteSlide((rx * (at.y - prev.y) - ry * (at.x - prev.x)) / lever2);
+            prev = { ...prev, x: at.x, y: at.y };
+          }
+        }
+      }
       rejected = applySample(world);
     }
     showDragEffect(event, rejected);
@@ -644,14 +670,19 @@ export function mountPlay(options: {
     const moved = dragMoved;
     if (cancel) cancelDrag(board, drag);
     else {
-      if (drag.kind === 'bar' && !nudgeBroken && nudgeSign !== 0) {
-        const bar = barById(board, drag.id);
-        const gap = bar ? sleeveGap(board, bar, nudgeSign) : null;
-        const pad = intentWorld(INTENT_SLEEVE, camera.zoom);
-        if (bar && gap !== null && gap <= pad) {
-          const rail = Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) || 1;
-          moveBar(board, bar, bar.t + (nudgeSign * (gap + 1e-3)) / rail);
+      if (drag.kind === 'bar') {
+        if (!nudgeBroken && nudgeSign !== 0) {
+          const bar = barById(board, drag.id);
+          const gap = bar ? sleeveGap(board, bar, nudgeSign) : null;
+          const pad = intentWorld(INTENT_SLEEVE, camera.zoom);
+          if (bar && gap !== null && gap <= pad) {
+            const rail = Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) || 1;
+            moveBar(board, bar, bar.t + (nudgeSign * (gap + 1e-3)) / rail);
+          }
         }
+      } else {
+        const ring = ringById(board, drag.id);
+        if (ring) nudgeRing(board, ring, nudgeSign, intentWorld(INTENT_SLEEVE, camera.zoom));
       }
       const snapshotRings = board.rings.map((ring) => ({ ...ring }));
       const snapshotBars = board.bars.map((bar) => ({ ...bar }));

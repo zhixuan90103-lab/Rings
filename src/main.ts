@@ -98,10 +98,9 @@ async function boot(): Promise<void> {
   let latestLayout: StageLayout | null = null;
   const resultEl = document.getElementById('result');
   const nextBtn = document.getElementById('result-next');
-  let levels: { advance: () => void; replay: () => void; atEnd: () => boolean } = {
+  let levels: { advance: () => void; replay: () => void } = {
     advance: () => {},
     replay: () => {},
-    atEnd: () => true,
   };
 
   function hideResult(): void {
@@ -109,9 +108,7 @@ async function boot(): Promise<void> {
   }
 
   function showResult(): void {
-    if (nextBtn instanceof HTMLButtonElement) nextBtn.disabled = levels.atEnd();
     resultEl?.removeAttribute('hidden');
-    if (levels.atEnd()) setStatus('');
   }
 
   document.getElementById('result-replay')?.addEventListener('click', () => {
@@ -119,7 +116,6 @@ async function boot(): Promise<void> {
     levels.replay();
   });
   nextBtn?.addEventListener('click', () => {
-    if (levels.atEnd()) return;
     hideResult();
     levels.advance();
   });

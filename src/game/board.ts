@@ -284,6 +284,9 @@ function retainers(board: Board, id: string): number {
   const ring = ringById(board, id);
   if (ring) {
     let n = 0;
+    for (const other of board.rings) {
+      if (other.id !== ring.id && (connectorHitsRing(ring, other) || connectorHitsRing(other, ring))) n += 1;
+    }
     for (const pin of board.pins) {
       if (pin.role !== 'block' && pin.role !== 'catch') continue;
       if (!pin.ownerId) {

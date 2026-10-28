@@ -353,9 +353,7 @@ header {
   color: #fffaf3;
 }
 
-#result-next:disabled {
-  opacity: 0.45;
-}
+
 
 #dock {
   position: relative;

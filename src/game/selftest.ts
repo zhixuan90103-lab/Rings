@@ -5,6 +5,7 @@ import { barById, moveBar, ringById, rotateRing, settle, beginDrag, cancelDrag, 
 
 import { clampAngle, freeArcs, pinForbidden } from './interval';
 import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
+import { emptyBoard, syncCatchPins } from './levelio';
 import { dragEffect } from './feedback';
 import { barHitsRing, barOverlapAmount, barsOverlapAmount, barStillInBuckle, buckleOverlapAmount, connectorHitsRing, strikePoint } from './volume';
 import { BAR_RECOIL_WORLD, RING_RECOIL_MAX, WOBBLE_CYCLES, WOBBLE_SECONDS, beginRecoil, heldSign, releaseHold, stepRecoil, wobbleOffset } from './recoil';
@@ -428,6 +429,36 @@ assert(editorPan(10, 0.5) === 0, 'the vertical slider midpoint stays on the fit'
 assert(editorPan(10, 0) === -10, 'the vertical slider looks one view lower');
 assert(editorPan(10, 1) === 10, 'the vertical slider looks one view higher');
 assert(Math.abs(editorPanT(10, editorPan(10, 0.25)) - 0.25) < 1e-6, 'the vertical slider reads back its offset');
+
+const clasped = emptyBoard();
+const outer = 0.648;
+const inner = 0.46656;
+clasped.rings.push({
+  id: 'green',
+  kind: 'ring',
+  x: 0,
+  y: 0,
+  inner,
+  outer,
+  gap: 1.75,
+  theta: Math.PI / 2,
+  connectors: [{ angle: -Math.PI, stem: 0.46, target: 'purple' }],
+});
+clasped.rings.push({
+  id: 'purple',
+  kind: 'ring',
+  x: 0,
+  y: -1.1,
+  inner,
+  outer,
+  gap: 1.75,
+  theta: 0,
+  connectors: [],
+});
+syncCatchPins(clasped);
+assert(connectorHitsRing(ringById(clasped, 'green')!, ringById(clasped, 'purple')!), 'the downward handle still meets the ring below');
+const stayed = settle(clasped, { kind: 'ring', id: 'green', theta: Math.PI / 2, x: 0, y: 0 });
+assert(!stayed.includes('green') && !stayed.includes('purple'), 'a ring stays when its handle still meets the ring below');
 assert(zoomCap(0.648, 0.4, 0.648, 1) === 1, 'a smaller level can zoom until its ring matches level 1');
 assert(zoomCap(0.648, 1.2, 0.648, 1) === 1.2, 'a level already larger than level 1 does not zoom in');
 const tight = clampCamera(cam.x + 5, cam.y + 5, fit.minZoom, box, fit);

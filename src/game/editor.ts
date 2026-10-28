@@ -36,10 +36,10 @@ export function mountEditor(
     setLevel: () => {},
     resetMoves: () => {},
   },
-): { advance: () => void; replay: () => void; atEnd: () => boolean } {
+): { advance: () => void; replay: () => void } {
   const levelHost = document.getElementById('levels');
   const editorPanel = document.getElementById('editor');
-  if (!levelHost || !editorPanel) return { advance: () => {}, replay: () => {}, atEnd: () => true };
+  if (!levelHost || !editorPanel) return { advance: () => {}, replay: () => {} };
 
   let level = 1;
   let tool: Tool = 'move';
@@ -509,8 +509,7 @@ export function mountEditor(
 
   const advance = (): void => {
     if (mode === 'edit') return;
-    if (level >= LEVEL_COUNT) return;
-    void open(level + 1);
+    void open(level >= LEVEL_COUNT ? 1 : level + 1);
   };
 
   const replay = (): void => {
@@ -518,15 +517,13 @@ export function mountEditor(
     void open(level);
   };
 
-  const atEnd = (): boolean => level >= LEVEL_COUNT;
-
   document.getElementById('hud-settings')?.addEventListener('click', () => {
     settingsOpen = !settingsOpen;
     render();
   });
 
   const canvas = document.querySelector('#stage canvas');
-  if (!(canvas instanceof HTMLCanvasElement)) return { advance, replay, atEnd };
+  if (!(canvas instanceof HTMLCanvasElement)) return { advance, replay };
 
   canvas.addEventListener('pointerdown', (event) => {
     if (mode !== 'edit') return;
@@ -603,5 +600,5 @@ export function mountEditor(
 
   void open(1);
 
-  return { advance, replay, atEnd };
+  return { advance, replay };
 }

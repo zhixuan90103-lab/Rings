@@ -436,13 +436,34 @@ export function claspCenterDistance(owner: RingBody, other: RingBody): number {
   return best;
 }
 
-/**
- * A drag step against one clasp.
- * Seated and buried, the owner stays put and the captive ring may still turn.
- * Off the seat, a cutting arc only allows the step that comes back toward the seat
- * or that pulls the core out. A graze under `CORE_SLACK` never blocks.
- */
-export function claspStepBlocked(
+export type ClaspPose = { kind: 'owner' | 'captive'; dist: number; depth: number };
+
+/** One pose per clasp this drag can change. Owner clasps first, then clasps on other rings. */
+export function claspPoses(board: Board, ring: RingBody): ClaspPose[] {
+  const poses: ClaspPose[] = [];
+  for (const other of board.rings) {
+    if (other.id === ring.id) continue;
+    if (ring.connectors.length > 0) {
+      poses.push({ kind: 'owner', dist: claspCenterDistance(ring, other), depth: connectorCoreDepth(ring, other) });
+    }
+    if (other.connectors.length > 0) {
+      poses.push({ kind: 'captive', dist: claspCenterDistance(other, ring), depth: connectorCoreDepth(other, ring) });
+    }
+  }
+  return poses;
+}
+
+/** §1 drag rule. A graze under `CORE_SLACK` does not block. */
+export function claspDragBlocked(before: ClaspPose[], after: ClaspPose[]): boolean {
+  const n = Math.min(before.length, after.length);
+  for (let i = 0; i < n; i++) {
+    if (before[i].kind !== after[i].kind) continue;
+    if (claspStepBlocked(before[i].kind, before[i].dist, before[i].depth, after[i].dist, after[i].depth)) return true;
+  }
+  return false;
+}
+
+function claspStepBlocked(
   kind: 'owner' | 'captive',
   beforeDist: number,
   beforeDepth: number,

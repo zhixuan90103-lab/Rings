@@ -21,9 +21,8 @@ import {
   barsOverlapAmount,
   barStillInBuckle,
   buckleOverlapAmount,
-  claspCenterDistance,
-  claspStepBlocked,
-  connectorCoreDepth,
+  claspDragBlocked,
+  claspPoses,
   connectorHitsRing,
 } from './volume';
 
@@ -193,39 +192,6 @@ function barBlockDepth(board: Board, bar: BarBody, t: number): number {
   return depth;
 }
 
-type ClaspTie = { kind: 'owner' | 'captive'; dist: number; depth: number };
-
-function claspTies(board: Board, ring: RingBody): ClaspTie[] {
-  const ties: ClaspTie[] = [];
-  for (const other of board.rings) {
-    if (other.id === ring.id) continue;
-    if (ring.connectors.length > 0) {
-      ties.push({
-        kind: 'owner',
-        dist: claspCenterDistance(ring, other),
-        depth: connectorCoreDepth(ring, other),
-      });
-    }
-    if (other.connectors.length > 0) {
-      ties.push({
-        kind: 'captive',
-        dist: claspCenterDistance(other, ring),
-        depth: connectorCoreDepth(other, ring),
-      });
-    }
-  }
-  return ties;
-}
-
-function claspBlocked(before: ClaspTie[], after: ClaspTie[]): boolean {
-  const n = Math.min(before.length, after.length);
-  for (let i = 0; i < n; i++) {
-    if (before[i].kind !== after[i].kind) continue;
-    if (claspStepBlocked(before[i].kind, before[i].dist, before[i].depth, after[i].dist, after[i].depth)) return true;
-  }
-  return false;
-}
-
 export function rotateRing(board: Board, ring: RingBody, delta: number): void {
   if (!board.volumes) {
     ring.theta = clampAngle(ring.theta, delta, ringFreeArcs(board, ring));
@@ -239,10 +205,10 @@ export function rotateRing(board: Board, ring: RingBody, delta: number): void {
     const step = Math.min(0.012, left);
     const previous = ring.theta;
     const depthBefore = ringBlockDepth(board, ring);
-    const tiesBefore = claspTies(board, ring);
+    const tiesBefore = claspPoses(board, ring);
     ring.theta = wrapAngle(ring.theta + sign * step);
     syncPins(board);
-    if (claspBlocked(tiesBefore, claspTies(board, ring)) || overlapGrew(depthBefore, ringBlockDepth(board, ring))) {
+    if (claspDragBlocked(tiesBefore, claspPoses(board, ring)) || overlapGrew(depthBefore, ringBlockDepth(board, ring))) {
       ring.theta = previous;
       syncPins(board);
       return;
@@ -360,12 +326,12 @@ function pinReleased(board: Board, ring: RingBody, pin: Board['pins'][number]): 
 function nudgeRingOneWay(board: Board, ring: RingBody, sign: number, maxTurn: number): boolean {
   const start = ring.theta;
   const depth = ringBlockDepth(board, ring);
-  const ties = claspTies(board, ring);
+  const ties = claspPoses(board, ring);
   for (let walked = 0.012; walked <= maxTurn + 1e-6; walked += 0.012) {
     ring.theta = wrapAngle(start + sign * Math.min(walked, maxTurn));
     syncPins(board);
     if (!board.pins.some((pin) => pinReleased(board, ring, pin))) continue;
-    if (overlapGrew(depth, ringBlockDepth(board, ring)) || claspBlocked(ties, claspTies(board, ring))) break;
+    if (overlapGrew(depth, ringBlockDepth(board, ring)) || claspDragBlocked(ties, claspPoses(board, ring))) break;
     return true;
   }
   ring.theta = start;
@@ -373,11 +339,7 @@ function nudgeRingOneWay(board: Board, ring: RingBody, sign: number, maxTurn: nu
   return false;
 }
 
-/**
- * On lift, finish a release that is within `pad` world units along the band.
- * Tries the drag direction first, then the other way, so a stop on the near
- * lip still clears. Anything farther is put back. `pad` is the 6% sleeve length.
- */
+/** §4 lift. `pad` is the 6% arc along the band. Drag direction first, then the other way. */
 export function nudgeRing(board: Board, ring: RingBody, sign: number, pad: number): void {
   if (pad <= 0) return;
   syncPins(board);

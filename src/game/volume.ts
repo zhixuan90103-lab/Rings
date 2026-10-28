@@ -7,7 +7,7 @@
 
 import type { BarBody, Board, RingBody } from './board';
 import { gapCovers, signedDelta, wrapAngle } from './angle';
-import { PART, buckleMetrics, connectorLayout } from './parts';
+import { PART, buckleMetrics, connectorLayout, connectorReach } from './parts';
 
 /**
  * Radius of the drawn gap cap.
@@ -40,6 +40,52 @@ function connectorBox(ring: RingBody): { x: number; y: number; angle: number; le
       width: metrics.stemW,
     };
   });
+}
+
+type SampleCache = { key: string; local: { x: number; y: number }[]; reach: number };
+
+const sampleCache = new WeakMap<RingBody, SampleCache>();
+
+function sampleKey(ring: RingBody): string {
+  let key = `${ring.inner}|${ring.outer}|${ring.gap}`;
+  for (const connector of ring.connectors) key += `|${connector.angle},${connector.stem}`;
+  return key;
+}
+
+/** Farthest drawn sample from the ring center. A body past this cannot touch. */
+function solidReach(ring: RingBody): number {
+  return ringSamples(ring).reach;
+}
+
+function ringSamples(ring: RingBody): SampleCache {
+  const key = sampleKey(ring);
+  const hit = sampleCache.get(ring);
+  if (hit && hit.key === key) return hit;
+  const theta = ring.theta;
+  const x = ring.x;
+  const y = ring.y;
+  ring.theta = 0;
+  ring.x = 0;
+  ring.y = 0;
+  const local: { x: number; y: number }[] = [];
+  pushRingSamples(local, ring);
+  ring.theta = theta;
+  ring.x = x;
+  ring.y = y;
+  const band = ring.outer * PART.bandRatio;
+  let reach = ring.outer;
+  for (const connector of ring.connectors) reach = Math.max(reach, connectorReach(ring.outer, band, connector.stem));
+  const cached = { key, local, reach: reach + 0.02 };
+  sampleCache.set(ring, cached);
+  return cached;
+}
+
+function visitRingSamples(ring: RingBody, visit: (x: number, y: number) => void): void {
+  const c = Math.cos(ring.theta);
+  const s = Math.sin(ring.theta);
+  for (const point of ringSamples(ring).local) {
+    visit(ring.x + c * point.x - s * point.y, ring.y + s * point.x + c * point.y);
+  }
 }
 
 function pushRingSamples(out: { x: number; y: number }[], ring: RingBody): void {
@@ -251,17 +297,17 @@ export function barsOverlapAmount(a: BarBody, t: number, b: BarBody): number {
  */
 export function buckleOverlapAmount(bar: BarBody, ring: RingBody, px: number, py: number): number {
   const { sleeveLen, sleeveW, gripSpan, gripStick } = buckleSpec(bar);
-  const samples: { x: number; y: number }[] = [];
-  pushRingSamples(samples, ring);
+  const pad = Math.hypot(Math.max(sleeveLen, gripSpan) / 2, sleeveW / 2 + gripStick);
+  if (Math.hypot(px - ring.x, py - ring.y) >= solidReach(ring) + pad) return 0;
   let amount = 0;
-  for (const p of samples) {
-    const { lx, ly } = buckleLocal(bar, p.x, p.y, px, py);
+  visitRingSamples(ring, (x, y) => {
+    const { lx, ly } = buckleLocal(bar, x, y, px, py);
     amount += boxDepth(lx, ly, 0, 0, sleeveLen / 2, sleeveW / 2);
     for (const side of [-1, 1]) {
       const gy = side * (sleeveW / 2 + gripStick / 2);
       amount += boxDepth(lx, ly, 0, gy, gripSpan / 2, gripStick / 2);
     }
-  }
+  });
   const frame = barFrame(bar, bar.t);
   const sample = (lx: number, ly: number) => {
     const x = px + frame.ux * lx + frame.nx * ly;
@@ -287,13 +333,12 @@ export function buckleOverlapAmount(bar: BarBody, ring: RingBody, px: number, py
 /** How far the bar body is inside this ring. Zero means the drawn capsule is clear. */
 export function barOverlapAmount(bar: BarBody, t: number, ring: RingBody): number {
   const seg = barSegment(bar, t);
-  const samples: { x: number; y: number }[] = [];
-  pushRingSamples(samples, ring);
+  if (distToSegment(ring.x, ring.y, seg.ax, seg.ay, seg.bx, seg.by) >= solidReach(ring) + bar.half) return 0;
   let amount = 0;
-  for (const p of samples) {
-    const gap = bar.half - distToSegment(p.x, p.y, seg.ax, seg.ay, seg.bx, seg.by);
+  visitRingSamples(ring, (x, y) => {
+    const gap = bar.half - distToSegment(x, y, seg.ax, seg.ay, seg.bx, seg.by);
     if (gap > 0) amount += gap;
-  }
+  });
   const n = 16;
   for (let i = 0; i <= n; i++) {
     const u = i / n;
@@ -401,6 +446,7 @@ function pointBandDepth(ring: RingBody, x: number, y: number): number {
 /** Inset stem and clasp buried in the other ring. Zero means the core is clear. */
 export function connectorCoreDepth(owner: RingBody, other: RingBody): number {
   if (owner.connectors.length === 0) return 0;
+  if (Math.hypot(owner.x - other.x, owner.y - other.y) >= solidReach(owner) + solidReach(other)) return 0;
   let amount = 0;
   for (const box of connectorBox(owner)) {
     const core = coreBox(box);

@@ -27,7 +27,7 @@ import {
   type Drag,
 } from './board';
 import { signedDelta } from './angle';
-import { disposeShatter, releaseBar, releaseBuckle, releaseRing, stepShatters, type Shatter } from './shatter';
+import { disposeShatter, releaseBar, releaseBuckle, releaseRing, SHATTER, stepShatters, type Shatter } from './shatter';
 import { LEVELS } from './levels';
 import level1 from '../../public/levels/1.json';
 import { dragEffect, mountFeedback } from './feedback';
@@ -412,7 +412,6 @@ export function mountPlay(options: {
   function applySample(world: { x: number; y: number }): number {
     if (!drag) return 0;
     const before = dragPose(drag);
-    let requested = 0;
     if (drag.kind === 'bar') {
       const bar = barById(board, drag.id);
       if (bar) {
@@ -421,8 +420,7 @@ export function mountPlay(options: {
         const len2 = dx * dx + dy * dy || 1;
         const t1 = ((world.x - bar.x0) * dx + (world.y - bar.y0) * dy) / len2;
         const t0 = ((drag.x - bar.x0) * dx + (drag.y - bar.y0) * dy) / len2;
-        requested = t1 - t0;
-        noteSlide(requested);
+        noteSlide(t1 - t0);
       }
     } else {
       const ring = ringById(board, drag.id);
@@ -495,6 +493,7 @@ export function mountPlay(options: {
     nudgeSign = 0;
     nudgeBroken = false;
     pointerId = null;
+    lastStamp = -1;
     feedback.clearPose();
     syncMeshes();
   }
@@ -546,6 +545,7 @@ export function mountPlay(options: {
     if (hits.length === 0) return;
     pending = { hits, x0: world.x, y0: world.y, dx: point.dx, dy: point.dy, samples: [{ x: world.x, y: world.y }] };
     pointerId = event.pointerId;
+    lastStamp = event.timeStamp;
     canvas.setPointerCapture(event.pointerId);
     if (chooseIntent(board, hits, world.x, world.y, world.x, world.y, false, intentWorld(INTENT_CLEAR, camera.zoom))) {
       lockPending(event, true);
@@ -555,6 +555,22 @@ export function mountPlay(options: {
   function dragPose(current: Drag): number {
     if (current.kind === 'ring') return ringById(board, current.id)?.theta ?? 0;
     return barById(board, current.id)?.t ?? 0;
+  }
+
+  let lastStamp = -1;
+
+  function pointerPoints(event: PointerEvent): PointerEvent[] {
+    const list = event.getCoalescedEvents?.() ?? [];
+    const events = list.length > 0 ? [...list] : [event];
+    const last = events[events.length - 1];
+    if (list.length > 0 && (!last || event.timeStamp > last.timeStamp)) events.push(event);
+    const fresh: PointerEvent[] = [];
+    for (const point of events) {
+      if (point.timeStamp <= lastStamp) continue;
+      lastStamp = point.timeStamp;
+      fresh.push(point);
+    }
+    return fresh.length > 0 ? fresh : [event];
   }
 
   function onPointerMove(event: PointerEvent): void {
@@ -567,70 +583,43 @@ export function mountPlay(options: {
       }
     }
     if (hold || event.pointerId !== pointerId) return;
-    const samples = event.getCoalescedEvents?.() ?? [];
-    const sample = samples.length > 0 ? samples[samples.length - 1] : event;
-    const world = worldFromEvent(sample, false);
+    const points = pointerPoints(event);
     if (pending) {
+      for (const point of points) {
+        const world = worldFromEvent(point, false);
+        if (world) pending.samples.push(world);
+      }
       const finger = rememberFinger(event);
-      if (world) pending.samples.push(world);
       const travel = finger ? Math.hypot(finger.dx - pending.dx, finger.dy - pending.dy) : 0;
       lockPending(event, travel >= INTENT_WINDOW * DESIGN_WIDTH);
       return;
     }
     if (!drag) return;
     let rejected = 0;
-    if (world && drag.kind === 'ring' && feedback.holding(drag.id)) {
-      const ring = ringById(board, drag.id);
-      const latched = feedback.holdSign(drag.id);
-      if (ring && latched !== 0) {
-        const lever = Math.max((ring.inner + ring.outer) / 2, 1e-4);
-        const rx = drag.x - ring.x;
-        const ry = drag.y - ring.y;
-        const lever2 = Math.max(rx * rx + ry * ry, lever * lever);
-        const requested = (rx * (world.y - drag.y) - ry * (world.x - drag.x)) / lever2;
-        const back = intentWorld(INTENT_WINDOW, camera.zoom) / lever;
-        if (Math.sign(requested) === Math.sign(latched) || Math.abs(requested) < back) {
-          syncMeshes();
-          return;
-        }
-      }
-    }
-    if (world) {
-      if (samples.length > 1 && drag.kind === 'bar') {
-        const bar = barById(board, drag.id);
-        if (bar) {
-          const dx = bar.x1 - bar.x0;
-          const dy = bar.y1 - bar.y0;
-          const len2 = dx * dx + dy * dy || 1;
-          let prev = drag;
-          for (const point of samples) {
-            const at = worldFromEvent(point, false);
-            if (!at) continue;
-            const t = ((at.x - bar.x0) * dx + (at.y - bar.y0) * dy) / len2;
-            const t0 = ((prev.x - bar.x0) * dx + (prev.y - bar.y0) * dy) / len2;
-            noteSlide(t - t0);
-            prev = { ...prev, x: at.x, y: at.y };
-          }
-        }
-      }
-      if (samples.length > 1 && drag.kind === 'ring') {
+    let applied = 0;
+    let saw = false;
+    for (const point of points) {
+      const world = worldFromEvent(point, false);
+      if (!world) continue;
+      if (drag.kind === 'ring' && feedback.holding(drag.id)) {
         const ring = ringById(board, drag.id);
-        if (ring) {
-          const lever = (ring.inner + ring.outer) / 2;
-          let prev = drag;
-          for (const point of samples) {
-            const at = worldFromEvent(point, false);
-            if (!at) continue;
-            const rx = prev.x - ring.x;
-            const ry = prev.y - ring.y;
-            const lever2 = Math.max(rx * rx + ry * ry, lever * lever);
-            noteSlide((rx * (at.y - prev.y) - ry * (at.x - prev.x)) / lever2);
-            prev = { ...prev, x: at.x, y: at.y };
-          }
+        const latched = feedback.holdSign(drag.id);
+        if (ring && latched !== 0) {
+          const lever = Math.max((ring.inner + ring.outer) / 2, 1e-4);
+          const rx = drag.x - ring.x;
+          const ry = drag.y - ring.y;
+          const lever2 = Math.max(rx * rx + ry * ry, lever * lever);
+          const requested = (rx * (world.y - drag.y) - ry * (world.x - drag.x)) / lever2;
+          const back = intentWorld(INTENT_WINDOW, camera.zoom) / lever;
+          if (Math.sign(requested) === Math.sign(latched) || Math.abs(requested) < back) continue;
         }
       }
       rejected = applySample(world);
+      applied += frameApplied;
+      saw = true;
     }
+    if (!saw) return;
+    frameApplied = applied;
     showDragEffect(rejected);
   }
 
@@ -860,7 +849,8 @@ export function mountPlay(options: {
   function frame(now: number): void {
     const dt = Math.min(0.033, (now - last) / 1000);
     last = now;
-    stepShatters(shatters, -viewSize().h / 2, dt);
+    const viewBottom = camera.position.y - viewSize().h / 2 / Math.max(camera.zoom, 1e-4);
+    stepShatters(shatters, viewBottom - SHATTER.chip, dt);
     shatters = shatters.filter((shatter) => {
       if (!shatter.dead) return true;
       disposeShatter(shatter);
@@ -949,7 +939,7 @@ export function mountPlay(options: {
       clearLeft = 0;
       drag = null;
       dragMoved = false;
-      pointerId = null;
+        pointerId = null;
       placeHalo();
     },
     frame: () => refreshLimits(true),

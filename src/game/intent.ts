@@ -16,7 +16,7 @@ export const INTENT_PAD = 0.1;
 /** Travel that confirms turn-versus-slide, as a fraction of design width. */
 export const INTENT_WINDOW = 0.02;
 /** How close a sleeve may be, in design-width fraction, before a lift finishes the exit. */
-export const INTENT_SLEEVE = 0.06;
+export const INTENT_SLEEVE = 0.02;
 /** Along-axis travel, as a fraction of design width, before a clear stroke may change the score. */
 export const INTENT_CLEAR = 0.01;
 

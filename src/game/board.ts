@@ -437,7 +437,7 @@ function nudgeRingOneWay(board: Board, ring: RingBody, sign: number, maxTurn: nu
   return false;
 }
 
-/** §4 lift. `pad` is the 6% arc along the band. Drag direction first, then the other way. */
+/** §4 lift. `pad` is the 2% arc along the band. Drag direction first, then the other way. */
 export function nudgeRing(board: Board, ring: RingBody, sign: number, pad: number): void {
   if (pad <= 0) return;
   syncPins(board);

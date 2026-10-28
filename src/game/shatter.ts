@@ -18,6 +18,8 @@ export const SHATTER = {
   scaleMin: 0.55,
   scaleSpan: 0.6,
   speedMax: 1.6,
+  /** Extra speed off a thin bar, so a one-row stick still opens sideways. */
+  barAcross: 2.2,
   /** World distance the fastest chip has already travelled when it appears. */
   lead: 0.16,
   gravity: -30,
@@ -211,6 +213,7 @@ export function makeShatter(
   originX: number,
   originY: number,
   color: number,
+  across = 0,
 ): Shatter | null {
   if (points.length === 0) return null;
   const count = points.length;
@@ -235,6 +238,15 @@ export function makeShatter(
     vy[i] = (dy / dist) * speed;
     x[i] += (dx / dist) * lead;
     y[i] += (dy / dist) * lead;
+    if (across > 0) {
+      const kick = (Math.random() - 0.5) * 2 * across;
+      const px = -dy / dist;
+      const py = dx / dist;
+      vx[i] += px * kick;
+      vy[i] += py * kick;
+      x[i] += px * (kick / across) * SHATTER.lead;
+      y[i] += py * (kick / across) * SHATTER.lead;
+    }
     spin[i] = (Math.random() - 0.5) * 4;
     pitch[i] = (Math.random() - 0.5) * 5;
     roll[i] = (Math.random() - 0.5) * 5;
@@ -328,7 +340,7 @@ export function releaseRing(parent: THREE.Object3D, ring: RingBody, color: numbe
 export function releaseBar(parent: THREE.Object3D, bar: BarBody, color: number): Shatter | null {
   const originX = bar.x0 + (bar.x1 - bar.x0) * bar.t;
   const originY = bar.y0 + (bar.y1 - bar.y0) * bar.t;
-  return makeShatter(parent, barChipPoints(bar), originX, originY, color);
+  return makeShatter(parent, barChipPoints(bar), originX, originY, color, SHATTER.barAcross);
 }
 
 /** Buckle pose is the marker already on screen: position and Z rotation. */

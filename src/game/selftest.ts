@@ -1,11 +1,11 @@
-import { beginTwoFinger, boardBounds, cameraForFit, cameraForPinch, choosePinchLock, clampCamera, designNdc, editorPan, editorPanT, editorZoom, editorZoomT, frameFor, frameLift, stepTwoFinger, worldFromDesign, zoomCap } from './camera';
+import { beginTwoFinger, boardBounds, cameraForFit, cameraForPinch, choosePinchLock, clampCamera, designNdc, editorFrame, editorPan, editorPanT, editorZoom, editorZoomT, frameFor, frameLift, stepTwoFinger, worldFromDesign, zoomCap } from './camera';
 import { connectorReach } from './parts';
 import { gapCovers, signedDelta } from './angle';
 import { barById, moveBar, ringById, rotateRing, settle, beginDrag, cancelDrag, dragTo, ringFreeArcs } from './board';
 
 import { clampAngle, freeArcs, pinForbidden } from './interval';
 import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
-import { emptyBoard, syncCatchPins } from './levelio';
+import { emptyBoard, seatConnectors, syncCatchPins } from './levelio';
 import { dragEffect } from './feedback';
 import { barHitsRing, barOverlapAmount, barsOverlapAmount, barStillInBuckle, buckleOverlapAmount, connectorHitsRing, strikePoint } from './volume';
 import { BAR_RECOIL_WORLD, RING_RECOIL_MAX, WOBBLE_CYCLES, WOBBLE_SECONDS, beginRecoil, heldSign, releaseHold, stepRecoil, wobbleOffset } from './recoil';
@@ -429,6 +429,8 @@ assert(editorPan(10, 0.5) === 0, 'the vertical slider midpoint stays on the fit'
 assert(editorPan(10, 0) === -10, 'the vertical slider looks one view lower');
 assert(editorPan(10, 1) === 10, 'the vertical slider looks one view higher');
 assert(Math.abs(editorPanT(10, editorPan(10, 0.25)) - 0.25) < 1e-6, 'the vertical slider reads back its offset');
+const framed = editorFrame({ x: 1, y: 2 }, 2, 1, 10);
+assert(framed.x === 1 && framed.y === 7 && framed.zoom === 2, 'editor framing keeps x, raises y by one view, and keeps zoom');
 
 const clasped = emptyBoard();
 const outer = 0.648;
@@ -459,6 +461,36 @@ syncCatchPins(clasped);
 assert(connectorHitsRing(ringById(clasped, 'green')!, ringById(clasped, 'purple')!), 'the downward handle still meets the ring below');
 const stayed = settle(clasped, { kind: 'ring', id: 'green', theta: Math.PI / 2, x: 0, y: 0 });
 assert(!stayed.includes('green') && !stayed.includes('purple'), 'a ring stays when its handle still meets the ring below');
+
+const columns = emptyBoard();
+function columnRing(id: string, x: number, y: number, target: string | null): void {
+  columns.rings.push({
+    id,
+    kind: 'ring',
+    x,
+    y,
+    inner: 0.46656,
+    outer: 0.648,
+    gap: 1.75,
+    theta: 0,
+    connectors: target ? [{ angle: 0, stem: 0.3, target }] : [],
+  });
+}
+columnRing('left-a', -1.66, 1, 'mid');
+columnRing('left-b', -1.9, -1, null);
+columnRing('right-a', 1.7, 1, null);
+columnRing('mid', -0.2, 0, null);
+seatConnectors(columns);
+assert(ringById(columns, 'left-a')!.x === ringById(columns, 'left-b')!.x, 'the left column shares one x');
+assert(Math.abs(ringById(columns, 'left-a')!.x + ringById(columns, 'right-a')!.x) < 1e-6, 'the right column mirrors the left');
+assert(Math.abs(ringById(columns, 'mid')!.x + 0.2) < 1e-6, 'a middle ring stays where it was placed');
+const owner = ringById(columns, 'left-a')!;
+const mid = ringById(columns, 'mid')!;
+const world = owner.theta + owner.connectors[0].angle;
+const dist = Math.hypot(mid.x - owner.x, mid.y - owner.y);
+const claspX = owner.x + Math.cos(world) * dist;
+const claspY = owner.y + Math.sin(world) * dist;
+assert(Math.hypot(claspX - mid.x, claspY - mid.y) < 1e-3, 'the clasp center lands on the target ring');
 assert(zoomCap(0.648, 0.4, 0.648, 1) === 1, 'a smaller level can zoom until its ring matches level 1');
 assert(zoomCap(0.648, 1.2, 0.648, 1) === 1.2, 'a level already larger than level 1 does not zoom in');
 const tight = clampCamera(cam.x + 5, cam.y + 5, fit.minZoom, box, fit);

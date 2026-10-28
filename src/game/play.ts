@@ -47,7 +47,7 @@ import {
   cameraForFit,
   beginTwoFinger,
   clampCamera,
-  editorPan,
+  editorFrame,
   editorZoom,
   editorZoomT,
   largestRing,
@@ -801,8 +801,8 @@ export function mountPlay(options: {
 
   function applyEditorView(zoom: number): void {
     const fit = cameraForFit(bounds, limits);
-    const travel = viewSize().h / Math.max(zoom, 1e-4);
-    applyCamera(fit.x, fit.y + editorPan(travel, panT), zoom);
+    const frame = editorFrame(fit, zoom, panT, viewSize().h);
+    applyCamera(frame.x, frame.y, frame.zoom);
     fitted = false;
   }
 

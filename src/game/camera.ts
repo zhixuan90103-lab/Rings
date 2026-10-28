@@ -277,6 +277,17 @@ export function editorPanT(viewH: number, offset: number): number {
   return Math.min(1, Math.max(0, offset / (2 * viewH) + 0.5));
 }
 
+/** Editor framing. X stays on the fit. Y shifts by the vertical slider. Zoom is the lens slider. */
+export function editorFrame(
+  fit: { x: number; y: number },
+  zoom: number,
+  panT: number,
+  viewH: number,
+): { x: number; y: number; zoom: number } {
+  const z = Math.max(zoom, 1e-4);
+  return { x: fit.x, y: fit.y + editorPan(viewH / z, panT), zoom: z };
+}
+
 /** Puts the world point that was under the first midpoint under the current midpoint. */
 export function cameraForPinch(
   start: { x: number; y: number; zoom: number; midX: number; midY: number },

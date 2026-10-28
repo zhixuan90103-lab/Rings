@@ -166,179 +166,53 @@ function bindConnector(board: Board, owner: RingBody, connector: RingConnector):
   connector.target = best?.id ?? null;
 }
 
-type SeatLink = {
-  owner: RingBody;
-  connector: RingConnector;
-  target: RingBody;
-  ux: number;
-  uy: number;
-  stem: number;
-  /** Distance off the handle ray. A handle pointed the wrong way stays last. */
-  perp: number;
-  primary: boolean;
-};
-
-/** A stem more than twice the shortest in a run keeps its own length. */
-const STEM_UNIFY_RATIO = 2;
-
 function stemForDistance(owner: RingBody, distance: number): number {
   const { band, bend } = claspReach(owner, 0);
   return Math.max(0.02, distance - bend - owner.outer + band * 0.2);
 }
 
-function shareStemLengths(links: SeatLink[]): void {
-  const ordered = [...links].sort((a, b) => a.stem - b.stem);
-  let start = 0;
-  while (start < ordered.length) {
-    let end = start;
-    while (
-      end + 1 < ordered.length
-      && ordered[end + 1].stem <= ordered[start].stem * STEM_UNIFY_RATIO
-    ) {
-      end += 1;
-    }
-    const group = ordered.slice(start, end + 1);
-    const mid = group.reduce((sum, link) => sum + link.stem, 0) / group.length;
-    for (const link of group) {
-      link.stem = mid;
-      link.connector.stem = mid;
-    }
-    start = end + 1;
-  }
+/** Rings farther out than this share one x on their side. */
+const SIDE_COLUMN = 1;
+
+/**
+ * Pull the left column onto one x and the right column onto the opposite x.
+ * The shared distance is the average of those rings' current distances from x = 0.
+ * Rings between the columns stay where they were placed.
+ */
+function alignSideColumns(board: Board): void {
+  const sides = board.rings.filter((ring) => Math.abs(ring.x) >= SIDE_COLUMN);
+  if (sides.length < 2) return;
+  const span = sides.reduce((sum, ring) => sum + Math.abs(ring.x), 0) / sides.length;
+  for (const ring of sides) ring.x = Math.sign(ring.x) * span;
+}
+
+/** Point the handle at the target and set its length so the clasp center is the ring center. */
+function aimConnector(owner: RingBody, connector: RingConnector, target: RingBody): void {
+  const dx = target.x - owner.x;
+  const dy = target.y - owner.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 1e-4) return;
+  connector.angle = wrapAngle(Math.atan2(dy, dx) - owner.theta);
+  connector.stem = stemForDistance(owner, distance);
 }
 
 /**
- * Seat every aimed handle once.
- * Each ring is placed by a single handle, so saving again does not tug it
- * between two clasps. Close stem lengths share one value. A handle with no
- * target binds to the ring its clasp is already sitting on.
+ * Keep the placed ring centers. Side columns share one x.
+ * Each handle is then aimed so its clasp center lands on the target ring.
  * Angle 0 stays +X, counterclockwise.
  */
 export function seatConnectors(board: Board): void {
   for (const owner of board.rings) {
     for (const connector of owner.connectors) bindConnector(board, owner, connector);
   }
-  const links: SeatLink[] = [];
+  alignSideColumns(board);
   for (const owner of board.rings) {
     for (const connector of owner.connectors) {
       if (!connector.target) continue;
       const target = board.rings.find((ring) => ring.id === connector.target);
       if (!target || target.id === owner.id) continue;
-      const dx = target.x - owner.x;
-      const dy = target.y - owner.y;
-      const world = owner.theta + connector.angle;
-      const ux = Math.cos(world);
-      const uy = Math.sin(world);
-      const along = dx * ux + dy * uy;
-      const off = Math.abs(dx * uy - dy * ux);
-      if (Math.hypot(dx, dy) < 1e-4) continue;
-      links.push({
-        owner,
-        connector,
-        target,
-        ux,
-        uy,
-        stem: stemForDistance(owner, along > 0.2 ? along : Math.hypot(dx, dy)),
-        perp: along > 0.2 ? off : Number.POSITIVE_INFINITY,
-        primary: false,
-      });
+      aimConnector(owner, connector, target);
     }
-  }
-  const incoming = new Map<string, SeatLink[]>();
-  for (const link of links) {
-    const list = incoming.get(link.target.id) ?? [];
-    list.push(link);
-    incoming.set(link.target.id, list);
-  }
-  for (const list of incoming.values()) {
-    list.sort((a, b) => a.perp - b.perp || a.owner.id.localeCompare(b.owner.id));
-    const chosen = list[0];
-    chosen.primary = true;
-    if (chosen.perp === Number.POSITIVE_INFINITY) {
-      const dx = chosen.target.x - chosen.owner.x;
-      const dy = chosen.target.y - chosen.owner.y;
-      const world = Math.atan2(dy, dx);
-      chosen.connector.angle = wrapAngle(world - chosen.owner.theta);
-      chosen.ux = Math.cos(world);
-      chosen.uy = Math.sin(world);
-      chosen.perp = 0;
-      chosen.stem = stemForDistance(chosen.owner, Math.hypot(dx, dy));
-    }
-  }
-  for (const link of links) {
-    if (!link.primary && link.connector.stem > 0) link.stem = link.connector.stem;
-  }
-  shareStemLengths(links);
-
-  const placed = new Set<string>();
-  const visiting = new Set<string>();
-  const ensure = (ring: RingBody): void => {
-    if (placed.has(ring.id) || visiting.has(ring.id)) return;
-    visiting.add(ring.id);
-    const link = incoming.get(ring.id)?.find((item) => item.primary);
-    if (link) ensure(link.owner);
-    if (link && placed.has(link.owner.id)) {
-      const { reach } = claspReach(link.owner, link.connector.stem);
-      ring.x = link.owner.x + link.ux * reach;
-      ring.y = link.owner.y + link.uy * reach;
-    }
-    visiting.delete(ring.id);
-    placed.add(ring.id);
-  };
-  for (const ring of board.rings) ensure(ring);
-
-  const claspError = (link: SeatLink): number => {
-    const { reach } = claspReach(link.owner, link.connector.stem);
-    const cx = link.owner.x + link.ux * reach;
-    const cy = link.owner.y + link.uy * reach;
-    return Math.hypot(link.target.x - cx, link.target.y - cy);
-  };
-  const putTargetOnClasp = (link: SeatLink): void => {
-    const { reach } = claspReach(link.owner, link.connector.stem);
-    link.target.x = link.owner.x + link.ux * reach;
-    link.target.y = link.owner.y + link.uy * reach;
-  };
-  const walking = new Set<string>();
-  const follow = (ring: RingBody): void => {
-    if (walking.has(ring.id)) return;
-    walking.add(ring.id);
-    for (const out of links) {
-      if (out.owner.id !== ring.id) continue;
-      putTargetOnClasp(out);
-      follow(out.target);
-    }
-    walking.delete(ring.id);
-  };
-  const slid = new Set<string>();
-  const pullOwner = (link: SeatLink): void => {
-    if (slid.has(`${link.owner.id}>${link.target.id}`)) return;
-    slid.add(`${link.owner.id}>${link.target.id}`);
-    const { reach } = claspReach(link.owner, link.connector.stem);
-    link.owner.x = link.target.x - link.ux * reach;
-    link.owner.y = link.target.y - link.uy * reach;
-    follow(link.owner);
-    settle(link.owner);
-  };
-  const settle = (ring: RingBody): void => {
-    for (const link of incoming.get(ring.id) ?? []) {
-      if (claspError(link) < 1e-3) continue;
-      pullOwner(link);
-    }
-  };
-  for (const link of links) {
-    if (link.primary || claspError(link) < 1e-3) continue;
-    const dx = link.target.x - link.owner.x;
-    const dy = link.target.y - link.owner.y;
-    const along = dx * link.ux + dy * link.uy;
-    if (along <= 0.2) {
-      const world = Math.atan2(dy, dx);
-      link.connector.angle = wrapAngle(world - link.owner.theta);
-      link.ux = Math.cos(world);
-      link.uy = Math.sin(world);
-    }
-    putTargetOnClasp(link);
-    follow(link.target);
-    settle(link.target);
   }
 }
 

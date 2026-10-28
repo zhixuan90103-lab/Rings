@@ -21,6 +21,7 @@ import { createRenderer, resizeToDesign } from './create-renderer';
 import { haptics } from './utils/haptics';
 import { mountPlay } from './game/play';
 import { mountEditor } from './game/editor';
+import { mountResult } from './game/result';
 
 const shell = document.getElementById('shell')!;
 const viewportEl = document.getElementById('viewport')!;
@@ -96,28 +97,13 @@ async function boot(): Promise<void> {
   scene.add(ground);
 
   let latestLayout: StageLayout | null = null;
-  const resultEl = document.getElementById('result');
-  const nextBtn = document.getElementById('result-next');
   let levels: { advance: () => void; replay: () => void } = {
     advance: () => {},
     replay: () => {},
   };
-
-  function hideResult(): void {
-    resultEl?.setAttribute('hidden', '');
-  }
-
-  function showResult(): void {
-    resultEl?.removeAttribute('hidden');
-  }
-
-  document.getElementById('result-replay')?.addEventListener('click', () => {
-    hideResult();
-    levels.replay();
-  });
-  nextBtn?.addEventListener('click', () => {
-    hideResult();
-    levels.advance();
+  const result = mountResult({
+    replay: () => levels.replay(),
+    next: () => levels.advance(),
   });
 
   const play = mountPlay({
@@ -133,7 +119,7 @@ async function boot(): Promise<void> {
         void haptics.impact('light');
       }
     },
-    onCleared: () => showResult(),
+    onCleared: () => result.show(),
   });
   let preview: DevicePreviewController;
 

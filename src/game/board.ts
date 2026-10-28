@@ -280,12 +280,16 @@ function pinHolds(ring: RingBody, pin: { role: string; x: number; y: number }): 
   return inBand(ring, pin.x, pin.y);
 }
 
+function handlesMeet(a: RingBody, b: RingBody): boolean {
+  return connectorHitsRing(a, b) || connectorHitsRing(b, a);
+}
+
 function retainers(board: Board, id: string): number {
   const ring = ringById(board, id);
   if (ring) {
     let n = 0;
     for (const other of board.rings) {
-      if (other.id !== ring.id && (connectorHitsRing(ring, other) || connectorHitsRing(other, ring))) n += 1;
+      if (other.id !== ring.id && handlesMeet(ring, other)) n += 1;
     }
     for (const pin of board.pins) {
       if (pin.role !== 'block' && pin.role !== 'catch') continue;

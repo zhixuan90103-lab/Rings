@@ -4,7 +4,7 @@
 
 顶视，正交相机从 +Z 看 XY。零件是有厚度的扁片。背景 `#fbf0e0`。
 
-代码在 `src/game/parts.ts`。竖条、圆弧柄、套筒、把手的比例只写在 `connectorMetrics` 和 `buckleMetrics`，碰撞和摆关卡读这两份，不再各抄一遍。`play.ts` 的 `showLevel` 按环上的 `connectors` 装衔接，按套筒卡扣的固定点放银卡扣。拖动在 `play.ts` 和 `board.ts`，不改零件网格。跟手见 [ROTATE-RINGS.md](./ROTATE-RINGS.md) §4。
+代码在 `src/game/parts.ts`。竖条、圆弧柄、套筒、把手的比例只写在 `connectorMetrics` 和 `buckleMetrics`，碰撞和摆关卡读这两份，不再各抄一遍。`play.ts` 的 `showLevel` 按环上的 `connectors` 装衔接，按套筒卡扣的固定点放银卡扣。拖动在 `play.ts`、`intent.ts` 和 `board.ts`，不改零件网格。跟手和意图见 [ROTATE-RINGS.md](./ROTATE-RINGS.md) §4。
 
 ## 单独部件
 

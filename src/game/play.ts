@@ -17,6 +17,7 @@ import {
   beginDrag,
   cancelDrag,
   dragTo,
+  moveBar,
   ringById,
   settle,
   syncPins,
@@ -30,6 +31,16 @@ import { LEVELS } from './levels';
 import level1 from '../../public/levels/1.json';
 import { dragEffect, mountFeedback } from './feedback';
 import { strikePoint } from './volume';
+import {
+  INTENT_PAD,
+  INTENT_SLEEVE,
+  INTENT_WINDOW,
+  chooseIntent,
+  intentWorld,
+  listCandidates,
+  sleeveGap,
+  type IntentHit,
+} from './intent';
 import {
   boardBounds,
   cameraForFit,
@@ -131,6 +142,10 @@ export function mountPlay(options: {
   let shatters: Shatter[] = [];
   let drag: Drag | null = null;
   let dragMoved = false;
+  let nudgeSign = 0;
+  let nudgeBroken = false;
+  let frameApplied = 0;
+  let pending: { hits: IntentHit[]; x0: number; y0: number; dx: number; dy: number; samples: { x: number; y: number }[] } | null = null;
   let pointerId: number | null = null;
   const fingers = new Map<number, { dx: number; dy: number }>();
   let pinch: TwoFinger | null = null;
@@ -366,6 +381,64 @@ export function mountPlay(options: {
     return null;
   }
 
+  function noteSlide(delta: number): void {
+    if (Math.abs(delta) < 1e-5) return;
+    const sign = Math.sign(delta);
+    if (nudgeSign === 0) nudgeSign = sign;
+    else if (sign !== nudgeSign) nudgeBroken = true;
+  }
+
+  function applySample(world: { x: number; y: number }): number {
+    if (!drag) return 0;
+    const before = dragPose(drag);
+    let requested = 0;
+    if (drag.kind === 'bar') {
+      const bar = barById(board, drag.id);
+      if (bar) {
+        const dx = bar.x1 - bar.x0;
+        const dy = bar.y1 - bar.y0;
+        const len2 = dx * dx + dy * dy || 1;
+        const t1 = ((world.x - bar.x0) * dx + (world.y - bar.y0) * dy) / len2;
+        const t0 = ((drag.x - bar.x0) * dx + (drag.y - bar.y0) * dy) / len2;
+        requested = t1 - t0;
+        noteSlide(requested);
+      }
+    }
+    const rejected = dragTo(board, drag, world.x, world.y);
+    const after = dragPose(drag);
+    frameApplied = drag.kind === 'ring' ? signedDelta(before, after) : after - before;
+    if (Math.abs(frameApplied) >= 1e-4) {
+      dragMoved = true;
+      if (feedback.holding(drag.id)) feedback.clearPose();
+    }
+    return rejected;
+  }
+
+  function lockPending(event: PointerEvent, decided: boolean): void {
+    if (!pending || drag) return;
+    const held = pending;
+    const last = held.samples[held.samples.length - 1];
+    const hit = chooseIntent(board, held.hits, held.x0, held.y0, last.x, last.y, decided);
+    if (!hit) {
+      if (!decided) return;
+      pending = null;
+      pointerId = null;
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      return;
+    }
+    const next = beginDrag(board, hit, held.x0, held.y0);
+    pending = null;
+    if (!next) return;
+    drag = next;
+    nudgeSign = 0;
+    nudgeBroken = false;
+    dragMoved = false;
+    feedback.arm();
+    let rejected = 0;
+    for (const sample of held.samples.slice(1)) rejected = applySample(sample);
+    showDragEffect(event, rejected);
+  }
+
   function rememberFinger(event: PointerEvent): { dx: number; dy: number } | null {
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
@@ -379,6 +452,9 @@ export function mountPlay(options: {
     if (pointerId !== null && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
     drag = null;
     dragMoved = false;
+    pending = null;
+    nudgeSign = 0;
+    nudgeBroken = false;
     pointerId = null;
     feedback.clearPose();
     syncMeshes();
@@ -426,13 +502,10 @@ export function mountPlay(options: {
     }
     if (hold || pointerId !== null) return;
     const world = designToWorld(point.dx, point.dy);
-    const hit = pickByRay(world);
-    if (!hit) return;
-    const next = beginDrag(board, hit, world.x, world.y);
-    if (!next) return;
-    drag = next;
-    dragMoved = false;
-    feedback.arm();
+    const ray = pickByRay(world);
+    const hits = listCandidates(board, world.x, world.y, intentWorld(INTENT_PAD, camera.zoom), ray ? [ray.id] : []);
+    if (hits.length === 0) return;
+    pending = { hits, x0: world.x, y0: world.y, dx: point.dx, dy: point.dy, samples: [{ x: world.x, y: world.y }] };
     pointerId = event.pointerId;
     canvas.setPointerCapture(event.pointerId);
   }
@@ -458,27 +531,52 @@ export function mountPlay(options: {
         return;
       }
     }
-    if (hold || event.pointerId !== pointerId || !drag) return;
+    if (hold || event.pointerId !== pointerId) return;
+    const samples = event.getCoalescedEvents?.() ?? [];
+    const sample = samples.length > 0 ? samples[samples.length - 1] : event;
+    const world = worldFromEvent(sample, false);
+    if (pending) {
+      const finger = rememberFinger(event);
+      if (world) pending.samples.push(world);
+      const travel = finger ? Math.hypot(finger.dx - pending.dx, finger.dy - pending.dy) : 0;
+      lockPending(event, travel >= INTENT_WINDOW * DESIGN_WIDTH);
+      return;
+    }
+    if (!drag) return;
     if (drag.kind === 'ring' && feedback.holding(drag.id)) {
       syncMeshes();
       return;
     }
-    const samples = event.getCoalescedEvents?.() ?? [];
-    const sample = samples.length > 0 ? samples[samples.length - 1] : event;
-    const before = dragPose(drag);
     let rejected = 0;
-    const world = worldFromEvent(sample, false);
-    if (world) rejected = dragTo(board, drag, world.x, world.y);
-    const after = dragPose(drag);
-    const applied = drag.kind === 'ring' ? signedDelta(before, after) : after - before;
-    if (Math.abs(applied) >= 1e-4) {
-      dragMoved = true;
-      if (feedback.holding(drag.id)) feedback.clearPose();
+    if (world) {
+      if (samples.length > 1 && drag.kind === 'bar') {
+        const bar = barById(board, drag.id);
+        if (bar) {
+          const dx = bar.x1 - bar.x0;
+          const dy = bar.y1 - bar.y0;
+          const len2 = dx * dx + dy * dy || 1;
+          let prev = drag;
+          for (const point of samples) {
+            const at = worldFromEvent(point, false);
+            if (!at) continue;
+            const t = ((at.x - bar.x0) * dx + (at.y - bar.y0) * dy) / len2;
+            const t0 = ((prev.x - bar.x0) * dx + (prev.y - bar.y0) * dy) / len2;
+            noteSlide(t - t0);
+            prev = { ...prev, x: at.x, y: at.y };
+          }
+        }
+      }
+      rejected = applySample(world);
     }
+    showDragEffect(event, rejected);
+  }
+
+  function showDragEffect(event: PointerEvent, rejected: number): void {
+    if (!drag) return;
     const effect = dragEffect({
       kind: drag.kind,
       moved: dragMoved,
-      applied,
+      applied: frameApplied,
       rejected,
       armed: feedback.state.armed,
       free: feedback.state.free,
@@ -506,11 +604,22 @@ export function mountPlay(options: {
   }
 
   function finishPointer(event: PointerEvent, cancel: boolean): void {
-    if (event.pointerId !== pointerId || !drag) return;
+    if (event.pointerId !== pointerId) return;
+    if (pending) lockPending(event, true);
+    if (!drag) return;
     const clicked = drag;
     const moved = dragMoved;
     if (cancel) cancelDrag(board, drag);
     else {
+      if (drag.kind === 'bar' && !nudgeBroken && nudgeSign !== 0) {
+        const bar = barById(board, drag.id);
+        const gap = bar ? sleeveGap(board, bar, nudgeSign) : null;
+        const pad = intentWorld(INTENT_SLEEVE, camera.zoom);
+        if (bar && gap !== null && gap <= pad) {
+          const rail = Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) || 1;
+          moveBar(board, bar, bar.t + (nudgeSign * (gap + 1e-3)) / rail);
+        }
+      }
       const snapshotRings = board.rings.map((ring) => ({ ...ring }));
       const snapshotBars = board.bars.map((bar) => ({ ...bar }));
       const left = settle(board, drag);
@@ -544,6 +653,9 @@ export function mountPlay(options: {
     }
     drag = null;
     dragMoved = false;
+    pending = null;
+    nudgeSign = 0;
+    nudgeBroken = false;
     pointerId = null;
     const stayed = views.some((view) => view.id === clicked.id && !view.falling);
     const held = feedback.holding(clicked.id);

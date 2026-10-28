@@ -9,6 +9,9 @@ import { dragEffect } from './feedback';
 import { barHitsRing, barOverlapAmount, barsOverlapAmount, barStillInBuckle, buckleOverlapAmount, connectorHitsRing, strikePoint } from './volume';
 import { BAR_RECOIL_WORLD, RING_RECOIL_MAX, WOBBLE_CYCLES, WOBBLE_SECONDS, beginRecoil, heldSign, releaseHold, stepRecoil, wobbleOffset } from './recoil';
 import { ringChipPoints } from './shatter';
+import { DESIGN_HEIGHT, DESIGN_WIDTH } from '../adapt/design';
+import { INTENT_PAD, chooseIntent, intentWorld, listCandidates } from './intent';
+import { VIEW_H } from './camera';
 
 function assert(cond: boolean, message: string): void {
   if (!cond) throw new Error(message);
@@ -114,6 +117,23 @@ const holeDrag = beginDrag(hole, { kind: 'ring', id: holeRing.id }, holeRing.x +
 dragTo(hole, holeDrag, holeRing.x + 0.05, holeRing.y + 0.2);
 const holeTurn = Math.abs(signedDelta(hole0, holeRing.theta));
 assert(holeTurn > 0.01 && holeTurn < 0.25, 'a drag inside the hole does not spin the ring');
+const pad = intentWorld(INTENT_PAD, 1);
+assert(Math.abs(pad - (INTENT_PAD * DESIGN_WIDTH * VIEW_H) / DESIGN_HEIGHT) < 1e-6, 'pad is a fraction of design width');
+const loose = levelPin();
+const looseRing = loose.rings[0];
+const holeHit = listCandidates(loose, looseRing.x, looseRing.y, pad);
+assert(holeHit.some((hit) => hit.id === looseRing.id && !hit.base), 'the hole is an enlarged ring hit');
+const arc = looseRing.inner * 0.6;
+const tangential = chooseIntent(
+  loose,
+  holeHit,
+  looseRing.x + arc,
+  looseRing.y,
+  looseRing.x + arc * Math.cos(0.5),
+  looseRing.y + arc * Math.sin(0.5),
+  false,
+);
+assert(tangential?.id === looseRing.id, 'a tangential move in the hole confirms the ring');
 assert(!gapCovers(blue.theta, jointAngle, blue.gap), 'this turn has not reached the clasp');
 const stillCaught = settle(basic, { kind: 'ring', id: 'blue', theta: blue.theta, x: 0, y: 0 });
 assert(!stillCaught.includes('blue'), 'pointerup away from the clasp stays locked');

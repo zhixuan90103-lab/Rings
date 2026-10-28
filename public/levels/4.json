@@ -164,63 +164,7 @@
       "color": 14169944
     }
   ],
-  "pins": [
-    {
-      "id": "catch:ring-1:0",
-      "ownerId": "ring-1",
-      "localAngle": 3.141592653589793,
-      "localRadius": 0.9413413768968883,
-      "x": 1.3992359121348665,
-      "y": 0.7134675929887293,
-      "role": "catch",
-      "limitRingId": null,
-      "stopHalf": 0
-    },
-    {
-      "id": "catch:ring-3:0",
-      "ownerId": "ring-3",
-      "localAngle": -1.7453292519943295,
-      "localRadius": 0.9413413768968883,
-      "x": 1.4046122715937173,
-      "y": -0.23245877413279692,
-      "role": "catch",
-      "limitRingId": null,
-      "stopHalf": 0
-    },
-    {
-      "id": "catch:ring-3:1",
-      "ownerId": "ring-3",
-      "localAngle": 2.2689280275926285,
-      "localRadius": 0.9413413768968883,
-      "x": 1.2084257336855644,
-      "y": -1.927432680690726,
-      "role": "catch",
-      "limitRingId": null,
-      "stopHalf": 0
-    },
-    {
-      "id": "catch:ring-4:0",
-      "ownerId": "ring-4",
-      "localAngle": 3.839724354387525,
-      "localRadius": 0.9413413768968883,
-      "x": -1.4773628968685917,
-      "y": -1.5643949528093362,
-      "role": "catch",
-      "limitRingId": null,
-      "stopHalf": 0
-    },
-    {
-      "id": "catch:ring-7:0",
-      "ownerId": "ring-7",
-      "localAngle": -2.2689280275926285,
-      "localRadius": 0.9413413768968883,
-      "x": -1.2258640346400405,
-      "y": -0.15453766544691105,
-      "role": "catch",
-      "limitRingId": null,
-      "stopHalf": 0
-    }
-  ],
+  "pins": [],
   "latches": [
     {
       "id": "buckle-bar-1",

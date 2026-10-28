@@ -21,27 +21,9 @@ export function emptyBoard(): Board {
   return { rings: [], bars: [], pins: [], latches: [], volumes: true };
 }
 
-/** Catch pins follow each handle so play still releases them by the existing rules. */
-export function syncCatchPins(board: Board): void {
+/** Drop handle pins left over from older saves. The arc on `connectors` is the handle. */
+export function stripHandlePins(board: Board): void {
   board.pins = board.pins.filter((pin) => !pin.id.startsWith('catch:'));
-  for (const ring of board.rings) {
-    const band = ring.outer * PART.bandRatio;
-    ring.connectors.forEach((connector, index) => {
-      const layout = connectorLayout(ring.outer, band, connector.stem);
-      board.pins.push({
-        id: `catch:${ring.id}:${index}`,
-        ownerId: ring.id,
-        localAngle: connector.angle,
-        localRadius: layout.claspDist,
-        x: 0,
-        y: 0,
-        role: 'catch',
-        limitRingId: null,
-        stopHalf: 0,
-      });
-    });
-  }
-  syncPins(board);
 }
 
 export function pieceColor(board: Board, id: string): number | undefined {
@@ -136,7 +118,7 @@ export async function loadLevel(index: number): Promise<Board> {
   data.latches ??= [];
   data.volumes = true;
   for (const ring of data.rings) ring.connectors ??= [];
-  syncCatchPins(data);
+  stripHandlePins(data);
   return data;
 }
 
@@ -245,7 +227,7 @@ export function centerBoard(board: Board): void {
 }
 
 export async function saveLevel(index: number, board: Board): Promise<void> {
-  syncCatchPins(board);
+  stripHandlePins(board);
   const response = await fetch(`./__levels/${index}`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },

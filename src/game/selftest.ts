@@ -1,11 +1,11 @@
 import { beginTwoFinger, boardBounds, cameraForFit, cameraForPinch, choosePinchLock, clampCamera, designNdc, editorFrame, editorPan, editorPanT, editorZoom, editorZoomT, frameFor, frameLift, stepTwoFinger, worldFromDesign, zoomCap } from './camera';
 import { connectorReach } from './parts';
 import { gapCovers, signedDelta, wrapAngle } from './angle';
-import { barById, moveBar, nudgeRing, ringById, rotateRing, settle, beginDrag, cancelDrag, dragTo, ringFreeArcs } from './board';
+import { barById, handlePoint, moveBar, nudgeRing, ringById, rotateRing, settle, beginDrag, cancelDrag, dragTo, ringFreeArcs } from './board';
 
 import { clampAngle, freeArcs, pinForbidden } from './interval';
 import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
-import { emptyBoard, seatConnectors, syncCatchPins } from './levelio';
+import { emptyBoard, seatConnectors } from './levelio';
 import { dragEffect } from './feedback';
 import { barHitsRing, barOverlapAmount, barsOverlapAmount, barStillInBuckle, buckleOverlapAmount, claspCenterDistance, connectorCoreDepth, connectorHitsRing, strikePoint } from './volume';
 import { BAR_RECOIL_WORLD, RING_RECOIL_MAX, WOBBLE_CYCLES, WOBBLE_SECONDS, beginRecoil, heldSign, releaseHold, stepRecoil, wobbleOffset } from './recoil';
@@ -146,8 +146,50 @@ assert(strikePoint(basic, 'ring', 'green', 1) !== null, 'a locked ring still has
   const spark = strikePoint(hit, 'ring', 'owner', 1);
   assert(spark !== null && spark.x > -0.1, 'a new clasp hit is marked on that clasp, not on the seated stem');
 }
+{
+  const hit = emptyBoard();
+  hit.volumes = true;
+  hit.rings.push(
+    {
+      id: 'green',
+      kind: 'ring',
+      x: 0,
+      y: 0,
+      inner: 0.42,
+      outer: 0.68,
+      gap: 1.2,
+      theta: 0,
+      connectors: [],
+    },
+    {
+      id: 'blue',
+      kind: 'ring',
+      x: 0,
+      y: 1.05,
+      inner: 0.42,
+      outer: 0.68,
+      gap: 1.2,
+      theta: Math.PI,
+      connectors: [],
+    },
+    {
+      id: 'purple',
+      kind: 'ring',
+      x: 0,
+      y: -1.35,
+      inner: 0.42,
+      outer: 0.68,
+      gap: 1.2,
+      theta: Math.PI / 2,
+      connectors: [{ angle: Math.PI / 2, stem: 0.55, target: 'green' }],
+    },
+  );
+  const spark = strikePoint(hit, 'ring', 'green', 1);
+  assert(spark !== null && spark.y > 0.2, 'a band meeting another ring sparks there, not on a handle already seated');
+}
 const blue = ringById(basic, 'blue')!;
-const joint = basic.pins.find((pin) => pin.id === 'joint-green')!;
+const green = ringById(basic, 'green')!;
+const joint = handlePoint(green, green.connectors[0]);
 const jointAngle = Math.atan2(joint.y - blue.y, joint.x - blue.x);
 assert(!gapCovers(blue.theta, jointAngle, blue.gap), 'the blue ring starts caught in the clasp');
 const blue0 = blue.theta;
@@ -383,14 +425,15 @@ const stillCaught = settle(basic, { kind: 'ring', id: 'blue', theta: blue.theta,
 assert(!stillCaught.includes('blue'), 'pointerup away from the clasp stays locked');
 const release = levelBasic();
 const releaseBlue = ringById(release, 'blue')!;
-const releaseJoint = release.pins.find((pin) => pin.id === 'joint-green')!;
+const releaseGreen = ringById(release, 'green')!;
+const releaseJoint = handlePoint(releaseGreen, releaseGreen.connectors[0]);
 releaseBlue.theta = Math.atan2(releaseJoint.y - releaseBlue.y, releaseJoint.x - releaseBlue.x);
 const openedBlue = settle(release, { kind: 'ring', id: 'blue', theta: releaseBlue.theta, x: 0, y: 0 });
 assert(openedBlue.includes('blue') && openedBlue.includes('green'), 'unlinking the rings lets both fall');
 const partial = levelBasic();
 const partialBlue = ringById(partial, 'blue')!;
 const partialGreen = ringById(partial, 'green')!;
-const partialJoint = partial.pins.find((pin) => pin.id === 'joint-green')!;
+const partialJoint = handlePoint(partialGreen, partialGreen.connectors[0]);
 const aligned = Math.atan2(partialJoint.y - partialBlue.y, partialJoint.x - partialBlue.x);
 let seated = false;
 for (const step of [0.15, 0.3, 0.45, 0.6, 0.75]) {
@@ -699,7 +742,6 @@ clasped.rings.push({
   theta: 0,
   connectors: [],
 });
-syncCatchPins(clasped);
 assert(connectorHitsRing(ringById(clasped, 'green')!, ringById(clasped, 'purple')!), 'the downward handle still meets the ring below');
 const stayed = settle(clasped, { kind: 'ring', id: 'green', theta: Math.PI / 2, x: 0, y: 0 });
 assert(!stayed.includes('green') && !stayed.includes('purple'), 'a ring stays when its handle still meets the ring below');

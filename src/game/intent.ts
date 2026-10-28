@@ -6,7 +6,7 @@
 
 import { DESIGN_HEIGHT, DESIGN_WIDTH } from '../adapt/design';
 import { signedDelta } from './angle';
-import { barById, moveBar, ringById, rotateRing, syncPins, type BarBody, type Board } from './board';
+import { barById, moveBar, projectBar, ringById, rotateRing, syncPins, type BarBody, type Board } from './board';
 import { VIEW_H } from './camera';
 import { PART, buckleMetrics } from './parts';
 import { barCovers, barSegment, barStillInBuckle, buckleCovers, ringCovers } from './volume';
@@ -61,13 +61,6 @@ export function intentWorld(fraction: number, zoom: number): number {
 
 function dist(ax: number, ay: number, bx: number, by: number): number {
   return Math.hypot(ax - bx, ay - by);
-}
-
-function projectBar(bar: BarBody, x: number, y: number): number {
-  const dx = bar.x1 - bar.x0;
-  const dy = bar.y1 - bar.y0;
-  const len2 = dx * dx + dy * dy || 1;
-  return ((x - bar.x0) * dx + (y - bar.y0) * dy) / len2;
 }
 
 function freeRing(board: Board, id: string): { neg: boolean; pos: boolean } {

@@ -2,7 +2,8 @@
  * Authored joints on one axis.
  * A blocking pin forbids the ring angles where the solid covers it.
  * A stop forbids a fixed arc and is not a retainer.
- * A latch is a retainer until the bar sits in its window on pointerup.
+ * A handle is a connector on its owner ring. It is not a pin.
+ * A latch keeps its bar until the sleeve is clear, or an old window contains t.
  */
 
 import { gapCovers, signedDelta, wrapAngle } from './angle';
@@ -16,6 +17,7 @@ import {
   type CircInterval,
   type LinInterval,
 } from './interval';
+import { PART, connectorLayout } from './parts';
 import {
   barOverlapAmount,
   barsOverlapAmount,
@@ -67,16 +69,16 @@ export type Pin = {
   id: string;
   /**
    * Who wears this pin.
-   * A ring id owns a clasp (`catch`) or a one-way block.
-   * A bar id owns only the silver mark on that bar.
+   * A ring id owns a one-way block. A bar id owns only the silver mark on that bar.
    * Null is a world pin and keeps whichever ring it sits in.
+   * A handle is not a pin. It lives on `RingBody.connectors`.
    */
   ownerId: string | null;
   localAngle: number;
   localRadius: number;
   x: number;
   y: number;
-  /** `catch` is a ring's clasp. It keeps both rings and does not stop the caught ring's turn. */
+  /** World `catch` only keeps a ring. It does not stop the turn and it is not a handle. */
   role: 'block' | 'stop' | 'catch';
   /** Stop pins hard-limit this ring and do not retain it. */
   limitRingId: string | null;
@@ -355,41 +357,68 @@ function handlesMeet(a: RingBody, b: RingBody): boolean {
   return connectorHitsRing(a, b) || connectorHitsRing(b, a);
 }
 
+/** Where the arc is mounted, in world XY. A seated arc center sits on the other ring, so the gap uses this point. */
+export function handlePoint(owner: RingBody, connector: RingConnector): { x: number; y: number } {
+  const width = owner.outer * PART.bandRatio;
+  const metrics = connectorLayout(owner.outer, width, connector.stem);
+  const world = owner.theta + connector.angle;
+  return {
+    x: owner.x + Math.cos(world) * metrics.claspDist,
+    y: owner.y + Math.sin(world) * metrics.claspDist,
+  };
+}
+
+function aimedAt(owner: RingBody, connector: RingConnector, ring: RingBody): boolean {
+  if (connector.target !== ring.id) return false;
+  const point = handlePoint(owner, connector);
+  const alpha = Math.atan2(point.y - ring.y, point.x - ring.x);
+  return gapCovers(ring.theta, alpha, ring.gap) && !connectorHitsRing(owner, ring);
+}
+
+/** The dragged ring is the captive. Its own gap does not free a handle it owns. */
+function handleReleasable(board: Board, ring: RingBody): boolean {
+  return board.rings.some((owner) => owner.id !== ring.id && owner.connectors.some((connector) => aimedAt(owner, connector, ring)));
+}
+
+function linked(a: RingBody, b: RingBody): boolean {
+  if (handlesMeet(a, b)) return true;
+  if (a.connectors.some((connector) => connector.target === b.id)) return true;
+  return b.connectors.some((connector) => connector.target === a.id);
+}
+
 function retainers(board: Board, id: string): number {
   const ring = ringById(board, id);
   if (ring) {
     let n = 0;
     for (const other of board.rings) {
-      if (other.id !== ring.id && handlesMeet(ring, other)) n += 1;
+      if (other.id !== ring.id && linked(ring, other)) n += 1;
     }
     for (const pin of board.pins) {
       if (pin.role !== 'block' && pin.role !== 'catch') continue;
-      if (!pin.ownerId) {
-        if (pinHolds(ring, pin)) n += 1;
-        continue;
-      }
-      if (pin.ownerId === ring.id) {
-        if (pin.role === 'catch' && board.rings.some((other) => other.id !== ring.id && pinHolds(other, pin))) n += 1;
-        continue;
-      }
-      if (ringById(board, pin.ownerId) && pinHolds(ring, pin)) n += 1;
+      if (pin.ownerId && ringById(board, pin.ownerId)) continue;
+      if (pinHolds(ring, pin)) n += 1;
     }
     return n;
   }
   return board.latches.filter((latch) => latch.barId === id).length;
 }
 
-/** This drag would drop the pin. World pins need the gap. A handle also needs the clasp clear of the solid. */
-function pinReleased(board: Board, ring: RingBody, pin: Board['pins'][number]): boolean {
-  if ((pin.role !== 'block' && pin.role !== 'catch') || pin.ownerId === ring.id) return false;
+/** World pins drop when the gap covers them. A handle drops only through `releaseHandles`. */
+function pinReleased(ring: RingBody, pin: Board['pins'][number]): boolean {
+  if (pin.role !== 'block' && pin.role !== 'catch') return false;
+  if (pin.ownerId && pin.ownerId === ring.id) return false;
   if (!pinHolds(ring, pin)) return false;
   const alpha = Math.atan2(pin.y - ring.y, pin.x - ring.x);
-  if (!gapCovers(ring.theta, alpha, ring.gap)) return false;
-  if (board.volumes && pin.role === 'catch' && pin.ownerId) {
-    const owner = ringById(board, pin.ownerId);
-    return !!owner && !connectorHitsRing(owner, ring);
+  return gapCovers(ring.theta, alpha, ring.gap);
+}
+
+function releaseHandles(board: Board, ring: RingBody): void {
+  for (const owner of board.rings) {
+    if (owner.id === ring.id) continue;
+    for (const connector of owner.connectors) {
+      if (aimedAt(owner, connector, ring)) connector.target = null;
+    }
   }
-  return true;
 }
 
 function nudgeRingOneWay(board: Board, ring: RingBody, sign: number, maxTurn: number): boolean {
@@ -399,7 +428,7 @@ function nudgeRingOneWay(board: Board, ring: RingBody, sign: number, maxTurn: nu
   for (let walked = 0.012; walked <= maxTurn + 1e-6; walked += 0.012) {
     ring.theta = wrapAngle(start + sign * Math.min(walked, maxTurn));
     syncPins(board);
-    if (!board.pins.some((pin) => pinReleased(board, ring, pin))) continue;
+    if (!board.pins.some((pin) => pinReleased(ring, pin)) && !handleReleasable(board, ring)) continue;
     if (overlapGrew(depth, ringBlockDepth(board, ring)) || claspDragBlocked(ties, claspPoses(board, ring))) break;
     return true;
   }
@@ -412,7 +441,7 @@ function nudgeRingOneWay(board: Board, ring: RingBody, sign: number, maxTurn: nu
 export function nudgeRing(board: Board, ring: RingBody, sign: number, pad: number): void {
   if (pad <= 0) return;
   syncPins(board);
-  if (board.pins.some((pin) => pinReleased(board, ring, pin))) return;
+  if (board.pins.some((pin) => pinReleased(ring, pin)) || handleReleasable(board, ring)) return;
   const lever = Math.max((ring.inner + ring.outer) / 2, 1e-4);
   const maxTurn = pad / lever;
   const first = sign === 0 ? 1 : sign;
@@ -425,7 +454,8 @@ export function settle(board: Board, drag: Drag): string[] {
   if (drag.kind === 'ring') {
     const ring = ringById(board, drag.id);
     if (!ring) return [];
-    board.pins = board.pins.filter((pin) => !pinReleased(board, ring, pin));
+    releaseHandles(board, ring);
+    board.pins = board.pins.filter((pin) => !pinReleased(ring, pin));
   } else {
     const bar = barById(board, drag.id);
     if (!bar) return [];
@@ -457,33 +487,6 @@ function cascade(board: Board): string[] {
     }
   }
   return left;
-}
-
-export function pick(
-  board: Board,
-  x: number,
-  y: number,
-): { kind: 'ring'; id: string } | { kind: 'bar'; id: string } | null {
-  let best: { kind: 'ring' | 'bar'; id: string; score: number } | null = null;
-  for (const ring of board.rings) {
-    const d = dist(ring.x, ring.y, x, y);
-    if (d < ring.inner - 0.08 || d > ring.outer + 0.12) continue;
-    const score = Math.abs(d - (ring.inner + ring.outer) / 2);
-    if (!best || score < best.score) best = { kind: 'ring', id: ring.id, score };
-  }
-  for (const bar of board.bars) {
-    const t = Math.min(1, Math.max(0, projectBar(bar, x, y)));
-    const p = barPoint(bar, t);
-    const rail = Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) || 1;
-    const along = (t - bar.t) * rail;
-    const grip = bar.grip > 0 ? bar.grip : 0.45;
-    if (Math.abs(along) > grip + 0.12) continue;
-    const d = dist(p.x, p.y, x, y);
-    if (d > bar.half + 0.22) continue;
-    if (!best || d < best.score) best = { kind: 'bar', id: bar.id, score: d };
-  }
-  if (!best) return null;
-  return best.kind === 'ring' ? { kind: 'ring', id: best.id } : { kind: 'bar', id: best.id };
 }
 
 export function beginDrag(board: Board, hit: { kind: 'ring'; id: string } | { kind: 'bar'; id: string }, x: number, y: number): Drag | null {

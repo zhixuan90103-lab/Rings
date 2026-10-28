@@ -15,7 +15,7 @@ import {
   centerBoard,
   saveLevel,
   seatConnectors,
-  syncCatchPins,
+  stripHandlePins,
 } from './levelio';
 
 type Tool = 'move' | 'turn';
@@ -70,7 +70,7 @@ export function mountEditor(
 
   function commit(refreshUi = true): void {
     alignBuckles();
-    syncCatchPins(authored);
+    stripHandlePins(authored);
     syncPins(authored);
     play.replace(structuredClone(authored));
     play.setEditing(mode === 'edit');
@@ -587,7 +587,7 @@ export function mountEditor(
         spinBar(bar, base + (a1 - a0));
       }
     }
-    syncCatchPins(authored);
+    stripHandlePins(authored);
     play.pose(structuredClone(authored));
     play.select(selection.id);
   });

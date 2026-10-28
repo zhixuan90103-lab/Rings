@@ -148,4 +148,5 @@ npm run cap:sync
 | 2026-08-03 | 初版：合并 niantu + shell 为 portrait-webgpu-base |
 | 2026-08-14 | 增加 AUDIO.md：音效不卡帧方案 |
 | 2026-08-14 | 增加 HAPTICS.md：震动一次接对 |
+| 2026-10-28 | 柄只写在 `connectors`。读档丢掉 `catch:` 旧销。撞击火花见 ROTATE-RINGS §7 |
 | 2026-08-31 | 真机震动验通。根因：Capacitor 8 `SceneDelegate` 绕过 storyboard。bootstrap 现会改 SceneDelegate；HUD 用「点我震动」+ `plugin` 标志验收 |

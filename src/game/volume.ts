@@ -375,6 +375,7 @@ const CORE_SLACK = 0.012;
 function coreBox(box: { x: number; y: number; angle: number; length: number; width: number }) {
   return {
     ...box,
+    // Straight stem, not the clasp arc. 0.72 keeps a seated stem locked; the arc uses 0.78.
     length: Math.max(0.02, box.length * 0.72),
     width: Math.max(0.02, box.width * 0.62),
   };
@@ -493,9 +494,29 @@ export function connectorHitsRing(owner: RingBody, other: RingBody): boolean {
   return bandSamples.some((p) => arcs.some((arc) => inClasp(arc, p.x, p.y)) || boxes.some((box) => inBox(box, p.x, p.y)));
 }
 
-function pointBlocked(board: Board, ring: RingBody, x: number, y: number): boolean {
-  for (const other of board.rings) {
-    if (other.id !== ring.id && ringHolds(other, x, y)) return true;
+/** Drawn band and gap caps. Another ring's handle is not part of this solid. */
+function solidHolds(ring: RingBody, x: number, y: number): boolean {
+  if (ringSector(ring, x, y)) return true;
+  const mid = (ring.inner + ring.outer) / 2;
+  const cap = hornRadius(ring);
+  for (const sign of [-1, 1]) {
+    const a = ring.theta + (sign * ring.gap) / 2;
+    const dx = x - (ring.x + Math.cos(a) * mid);
+    const dy = y - (ring.y + Math.sin(a) * mid);
+    if (dx * dx + dy * dy <= cap * cap) return true;
+  }
+  return false;
+}
+
+function hitsOtherSolid(board: Board, ring: RingBody, x: number, y: number): boolean {
+  return board.rings.some((other) => other.id !== ring.id && solidHolds(other, x, y));
+}
+
+function pointBlocked(board: Board, ring: RingBody, x: number, y: number, connector = false): boolean {
+  if (connector) {
+    for (const other of board.rings) {
+      if (other.id !== ring.id && ringHolds(other, x, y)) return true;
+    }
   }
   for (const bar of board.bars) {
     const seg = barSegment(bar, bar.t);
@@ -573,6 +594,25 @@ function outerPatch(ring: RingBody, fresh: { x: number; y: number }[]): { x: num
   return centroid(patch);
 }
 
+/** Band samples buried in another ring. The deepest bite is the contact, not a handle already seated elsewhere. */
+function ringPatch(board: Board, ring: RingBody, fresh: { x: number; y: number }[]): { x: number; y: number } {
+  let nearest = fresh[0];
+  let best = -1;
+  for (const p of fresh) {
+    let depth = 0;
+    for (const other of board.rings) {
+      if (other.id === ring.id || !solidHolds(other, p.x, p.y)) continue;
+      depth = Math.max(depth, pointBandDepth(other, p.x, p.y));
+    }
+    if (depth > best) {
+      best = depth;
+      nearest = p;
+    }
+  }
+  const patch = fresh.filter((p) => Math.hypot(p.x - nearest.x, p.y - nearest.y) < 0.08);
+  return centroid(patch);
+}
+
 /** One contact patch. Averaging the left and right sides lands in the hole. */
 function nearestPatch(board: Board, fresh: { x: number; y: number }[]): { x: number; y: number } {
   let nearest = fresh[0];
@@ -597,8 +637,10 @@ function ringStrikePoint(board: Board, ring: RingBody, sign: number): { x: numbe
   const seen = new Set(beforeFixed.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`));
   const alreadyTouching = beforeFixed.filter(() => true);
   for (const p of beforeMove) {
-    if (pointBlocked(board, ring, p.x, p.y)) alreadyTouching.push(p);
+    if (pointBlocked(board, ring, p.x, p.y, p.connector) || (!p.connector && hitsOtherSolid(board, ring, p.x, p.y))) alreadyTouching.push(p);
   }
+  const meets = (p: { x: number; y: number; connector: boolean }) =>
+    pointBlocked(board, ring, p.x, p.y, p.connector) || (!p.connector && hitsOtherSolid(board, ring, p.x, p.y));
   try {
     for (const extra of [0.012, 0.024, 0.04]) {
       ring.theta = wrapAngle(saved + dir * extra);
@@ -608,7 +650,7 @@ function ringStrikePoint(board: Board, ring: RingBody, sign: number): { x: numbe
         const next = afterMove[i];
         const prev = beforeMove[i];
         if (!prev) continue;
-        if (pointBlocked(board, ring, next.x, next.y) && !pointBlocked(board, ring, prev.x, prev.y)) fresh.push(next);
+        if (meets(next) && !meets(prev)) fresh.push(next);
       }
       for (const p of fixedHits(board, ring)) {
         if (!seen.has(`${p.x.toFixed(3)},${p.y.toFixed(3)}`)) fresh.push(p);
@@ -616,12 +658,19 @@ function ringStrikePoint(board: Board, ring: RingBody, sign: number): { x: numbe
       const claspFresh = fresh.filter((p) => p.connector);
       if (claspFresh.length > 0) return outerPatch(ring, claspFresh);
       const opened = fresh.filter((p) => !nearPoint(alreadyTouching, p.x, p.y));
-      if (opened.length > 0) return nearestPatch(board, opened);
+      if (opened.length > 0) {
+        const againstBar = opened.some((p) => distToBars(board, p.x, p.y) <= 0.2);
+        return againstBar ? nearestPatch(board, opened) : ringPatch(board, ring, opened);
+      }
     }
     const already = fixedHits(board, ring);
+    const band: { x: number; y: number }[] = [];
     for (const p of beforeMove) {
-      if (pointBlocked(board, ring, p.x, p.y)) already.push(p);
+      if (p.connector) {
+        if (pointBlocked(board, ring, p.x, p.y, true)) already.push(p);
+      } else if (hitsOtherSolid(board, ring, p.x, p.y)) band.push(p);
     }
+    if (band.length > 0) return ringPatch(board, ring, band);
     return already.length > 0 ? nearestPatch(board, already) : null;
   } finally {
     ring.theta = saved;

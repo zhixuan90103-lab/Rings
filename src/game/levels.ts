@@ -246,19 +246,7 @@ export function levelBasic(): Board {
         t,
       },
     ],
-    pins: [
-      {
-        id: 'joint-green',
-        ownerId: 'green',
-        localAngle: Math.PI / 2,
-        localRadius: claspDist,
-        x: 0,
-        y: 0,
-        role: 'catch',
-        limitRingId: null,
-        stopHalf: 0,
-      },
-    ],
+    pins: [],
     latches: [
       { id: 'buckle-red', barId: 'bar-red', x: cx, y: cy, t0: 0, t1: 0, release: 'sleeve' },
     ],

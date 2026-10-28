@@ -69,6 +69,7 @@ HUD 状态行有 `plugin: true/false`。`false` = 仍在默认 `CAPBridgeViewCon
 | 震动原生 | `plugins/native-haptics/*.swift` + bootstrap |
 | 启动 HUD | `index.html` + `main.ts` |
 | 关卡编辑 | `src/game/editor.ts`、`src/game/levelio.ts`、`public/levels/`。保存只在 `npm run dev` |
-| 过关结算 | `play.ts` 计时后 `onCleared`；`index.html` 的 `#result` 与 `main.ts` 接重玩、下一关 |
+| 过关结算 | `play.ts` 计时后 `onCleared`；`result.ts` 弹出 `#result`。重玩再开当前关，下一关向后，第 5 关回到第 1 关 |
+| 编辑镜头 | `camera.ts` 的 `editorFrame`。编辑栏「镜头」「上下」两条滑杆 |
 | 音效（规划） | [AUDIO.md](./AUDIO.md) |
 | 震动接线 | [HAPTICS.md](./HAPTICS.md) |

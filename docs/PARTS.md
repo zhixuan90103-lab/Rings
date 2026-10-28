@@ -1,6 +1,6 @@
 # 基础件
 
-当前画面用这些零件拼 `levelBasic`。规则在 [ROTATE-RINGS.md](./ROTATE-RINGS.md)。
+试玩画面用这些零件拼 `public/levels/`。`levelBasic` 是手写参考，不直接铺到画面上。规则在 [ROTATE-RINGS.md](./ROTATE-RINGS.md)。
 
 顶视，正交相机从 +Z 看 XY。零件是有厚度的扁片。背景 `#f6f1e8`。
 

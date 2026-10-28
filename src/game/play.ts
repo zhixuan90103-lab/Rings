@@ -475,7 +475,7 @@ export function mountPlay(options: {
     feedback.arm();
     let rejected = 0;
     for (const sample of held.samples.slice(1)) rejected = applySample(sample);
-    showDragEffect(event, rejected);
+    showDragEffect(rejected);
   }
 
   function rememberFinger(event: { clientX: number; clientY: number }): { dx: number; dy: number } | null {
@@ -557,13 +557,6 @@ export function mountPlay(options: {
     return barById(board, current.id)?.t ?? 0;
   }
 
-  function stopInvalidDrag(event: PointerEvent): void {
-    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
-    drag = null;
-    dragMoved = false;
-    pointerId = null;
-  }
-
   function onPointerMove(event: PointerEvent): void {
     if (fingers.has(event.pointerId)) {
       const point = rememberFinger(event);
@@ -585,11 +578,23 @@ export function mountPlay(options: {
       return;
     }
     if (!drag) return;
-    if (drag.kind === 'ring' && feedback.holding(drag.id)) {
-      syncMeshes();
-      return;
-    }
     let rejected = 0;
+    if (world && drag.kind === 'ring' && feedback.holding(drag.id)) {
+      const ring = ringById(board, drag.id);
+      const latched = feedback.holdSign(drag.id);
+      if (ring && latched !== 0) {
+        const lever = Math.max((ring.inner + ring.outer) / 2, 1e-4);
+        const rx = drag.x - ring.x;
+        const ry = drag.y - ring.y;
+        const lever2 = Math.max(rx * rx + ry * ry, lever * lever);
+        const requested = (rx * (world.y - drag.y) - ry * (world.x - drag.x)) / lever2;
+        const back = intentWorld(INTENT_WINDOW, camera.zoom) / lever;
+        if (Math.sign(requested) === Math.sign(latched) || Math.abs(requested) < back) {
+          syncMeshes();
+          return;
+        }
+      }
+    }
     if (world) {
       if (samples.length > 1 && drag.kind === 'bar') {
         const bar = barById(board, drag.id);
@@ -626,10 +631,10 @@ export function mountPlay(options: {
       }
       rejected = applySample(world);
     }
-    showDragEffect(event, rejected);
+    showDragEffect(rejected);
   }
 
-  function showDragEffect(event: PointerEvent, rejected: number): void {
+  function showDragEffect(rejected: number): void {
     if (!drag) return;
     const effect = dragEffect({
       kind: drag.kind,
@@ -655,9 +660,6 @@ export function mountPlay(options: {
       const bar = barById(board, drag.id);
       const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
       feedback.stopBar(drag.id, rejected, length);
-      stopInvalidDrag(event);
-      syncMeshes();
-      return;
     }
     syncMeshes();
   }

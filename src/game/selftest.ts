@@ -105,6 +105,47 @@ assert(Math.abs(signedDelta(greenNested, ringById(basic, 'green')!.theta)) < 0.0
   assert(Math.abs(signedDelta(captiveOff, captive.theta)) < 0.08, 'the captive ring cannot turn off the other way either');
 }
 assert(strikePoint(basic, 'ring', 'green', 1) !== null, 'a locked ring still has a contact for the hit');
+{
+  const hit = emptyBoard();
+  hit.volumes = true;
+  hit.rings.push(
+    {
+      id: 'seat',
+      kind: 'ring',
+      x: 0.15,
+      y: 0,
+      inner: 0.42,
+      outer: 0.68,
+      gap: 1.2,
+      theta: 0,
+      connectors: [],
+    },
+    {
+      id: 'stop',
+      kind: 'ring',
+      x: 0.25,
+      y: 0.7,
+      inner: 0.42,
+      outer: 0.68,
+      gap: 1.2,
+      theta: -Math.PI / 2,
+      connectors: [],
+    },
+    {
+      id: 'owner',
+      kind: 'ring',
+      x: -0.95,
+      y: 0,
+      inner: 0.42,
+      outer: 0.68,
+      gap: 1.2,
+      theta: 0,
+      connectors: [{ angle: 0, stem: 0.55, target: 'seat' }],
+    },
+  );
+  const spark = strikePoint(hit, 'ring', 'owner', 1);
+  assert(spark !== null && spark.x > -0.1, 'a new clasp hit is marked on that clasp, not on the seated stem');
+}
 const blue = ringById(basic, 'blue')!;
 const joint = basic.pins.find((pin) => pin.id === 'joint-green')!;
 const jointAngle = Math.atan2(joint.y - blue.y, joint.x - blue.x);

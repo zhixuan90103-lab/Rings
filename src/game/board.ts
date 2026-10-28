@@ -192,6 +192,44 @@ function barBlockDepth(board: Board, bar: BarBody, t: number): number {
   return depth;
 }
 
+/** Smallest accepted slice. A larger stride never skips a solid this thin. */
+const FINE_ANGLE = 0.012;
+
+function ringStride(ring: RingBody): number {
+  const band = Math.max(ring.outer - ring.inner, 0.02);
+  const thin = band * 0.5 * 0.62;
+  let reach = ring.outer;
+  for (const connector of ring.connectors) reach = Math.max(reach, ring.outer + connector.stem + band);
+  return Math.max(FINE_ANGLE, thin / Math.max(reach, 0.2));
+}
+
+function ringSliceBlocked(board: Board, ring: RingBody, from: number, to: number): boolean {
+  ring.theta = from;
+  syncPins(board);
+  const depthBefore = ringBlockDepth(board, ring);
+  const tiesBefore = claspPoses(board, ring);
+  ring.theta = to;
+  syncPins(board);
+  return claspDragBlocked(tiesBefore, claspPoses(board, ring)) || overlapGrew(depthBefore, ringBlockDepth(board, ring));
+}
+
+/** How far `step` can go. The far pose is never kept just because it looks legal after a crossing. */
+function takeRing(board: Board, ring: RingBody, sign: number, step: number): number {
+  const from = ring.theta;
+  const at = (distance: number) => wrapAngle(from + sign * distance);
+  if (!ringSliceBlocked(board, ring, from, at(step))) return step;
+  let lo = 0;
+  let hi = step;
+  while (hi - lo > FINE_ANGLE) {
+    const mid = (lo + hi) / 2;
+    if (!ringSliceBlocked(board, ring, from, at(mid))) lo = mid;
+    else hi = mid;
+  }
+  ring.theta = at(lo);
+  syncPins(board);
+  return lo;
+}
+
 export function rotateRing(board: Board, ring: RingBody, delta: number): void {
   if (!board.volumes) {
     ring.theta = clampAngle(ring.theta, delta, ringFreeArcs(board, ring));
@@ -201,19 +239,12 @@ export function rotateRing(board: Board, ring: RingBody, delta: number): void {
   const sign = Math.sign(delta);
   if (sign === 0) return;
   let left = Math.abs(delta);
+  const stride = ringStride(ring);
   while (left > 1e-4) {
-    const step = Math.min(0.012, left);
-    const previous = ring.theta;
-    const depthBefore = ringBlockDepth(board, ring);
-    const tiesBefore = claspPoses(board, ring);
-    ring.theta = wrapAngle(ring.theta + sign * step);
-    syncPins(board);
-    if (claspDragBlocked(tiesBefore, claspPoses(board, ring)) || overlapGrew(depthBefore, ringBlockDepth(board, ring))) {
-      ring.theta = previous;
-      syncPins(board);
-      return;
-    }
-    left -= step;
+    const step = Math.min(stride, left);
+    const gained = takeRing(board, ring, sign, step);
+    if (gained < step - 1e-4) return;
+    left -= gained;
   }
 }
 
@@ -242,6 +273,39 @@ export function barBlocked(board: Board, bar: BarBody): LinInterval[] {
   return blocked;
 }
 
+const FINE_T = 0.008;
+
+function barStride(board: Board, bar: BarBody): number {
+  const rail = Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) || 1;
+  let thin = bar.half > 0 ? bar.half : 0.08;
+  for (const ring of board.rings) {
+    const band = Math.max(ring.outer - ring.inner, 0.02);
+    thin = Math.min(thin, band * 0.5 * 0.62);
+  }
+  return Math.max(FINE_T, thin / rail);
+}
+
+function barSliceBlocked(board: Board, bar: BarBody, from: number, to: number): boolean {
+  return overlapGrew(barBlockDepth(board, bar, from), barBlockDepth(board, bar, to));
+}
+
+function takeBar(board: Board, bar: BarBody, sign: number, step: number): number {
+  const from = bar.t;
+  if (!barSliceBlocked(board, bar, from, from + sign * step)) {
+    bar.t = from + sign * step;
+    return step;
+  }
+  let lo = 0;
+  let hi = step;
+  while (hi - lo > FINE_T) {
+    const mid = (lo + hi) / 2;
+    if (!barSliceBlocked(board, bar, from, from + sign * mid)) lo = mid;
+    else hi = mid;
+  }
+  bar.t = from + sign * lo;
+  return lo;
+}
+
 export function moveBar(board: Board, bar: BarBody, target: number): void {
   if (!board.volumes) {
     const free = freeLinear(barBlocked(board, bar), 0, 1);
@@ -251,16 +315,12 @@ export function moveBar(board: Board, bar: BarBody, target: number): void {
   const sign = Math.sign(target - bar.t);
   if (sign === 0) return;
   let left = Math.abs(target - bar.t);
+  const stride = barStride(board, bar);
   while (left > 1e-4) {
-    const step = Math.min(0.008, left);
-    const previous = bar.t;
-    const before = barBlockDepth(board, bar, previous);
-    bar.t = previous + sign * step;
-    if (overlapGrew(before, barBlockDepth(board, bar, bar.t))) {
-      bar.t = previous;
-      return;
-    }
-    left -= step;
+    const step = Math.min(stride, left);
+    const gained = takeBar(board, bar, sign, step);
+    if (gained < step - 1e-4) return;
+    left -= gained;
   }
 }
 

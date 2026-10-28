@@ -93,6 +93,10 @@ export function mountFeedback(root: THREE.Object3D) {
     holding(id: string): boolean {
       return pose?.id === id && pose.body.hold === true;
     },
+    holdSign(id: string): number {
+      if (pose?.id !== id || !pose.body.hold) return 0;
+      return pose.body.sign;
+    },
     offset(id: string): number {
       if (pose?.id !== id) return 0;
       return wobbleOffset(pose.body);

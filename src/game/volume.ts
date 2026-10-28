@@ -526,10 +526,17 @@ function fixedHits(board: Board, ring: RingBody): { x: number; y: number }[] {
   return hits;
 }
 
-function ringBodySamples(ring: RingBody): { x: number; y: number }[] {
-  const samples: { x: number; y: number }[] = [];
-  pushRingSamples(samples, ring);
+function ringBodySamples(ring: RingBody): { x: number; y: number; connector: boolean }[] {
+  const samples: { x: number; y: number; connector: boolean }[] = [];
+  const band: { x: number; y: number }[] = [];
+  pushRingSamples(band, ring);
+  for (const p of band) samples.push({ ...p, connector: false });
+  for (const p of connectorSamples(ring)) samples.push({ ...p, connector: true });
   return samples;
+}
+
+function nearPoint(points: { x: number; y: number }[], x: number, y: number): boolean {
+  return points.some((p) => Math.hypot(p.x - x, p.y - y) < 0.12);
 }
 
 function centroid(points: { x: number; y: number }[]): { x: number; y: number } {
@@ -549,6 +556,21 @@ function distToBars(board: Board, x: number, y: number): number {
     best = Math.min(best, distToSegment(x, y, seg.ax, seg.ay, seg.bx, seg.by));
   }
   return best;
+}
+
+/** The handle contact farthest from the ring center. The stem root is closer than the clasp. */
+function outerPatch(ring: RingBody, fresh: { x: number; y: number }[]): { x: number; y: number } {
+  let nearest = fresh[0];
+  let best = Math.hypot(nearest.x - ring.x, nearest.y - ring.y);
+  for (const p of fresh) {
+    const d = Math.hypot(p.x - ring.x, p.y - ring.y);
+    if (d > best) {
+      best = d;
+      nearest = p;
+    }
+  }
+  const patch = fresh.filter((p) => Math.hypot(p.x - nearest.x, p.y - nearest.y) < 0.08);
+  return centroid(patch);
 }
 
 /** One contact patch. Averaging the left and right sides lands in the hole. */
@@ -573,11 +595,15 @@ function ringStrikePoint(board: Board, ring: RingBody, sign: number): { x: numbe
   const beforeMove = ringBodySamples(ring);
   const beforeFixed = fixedHits(board, ring);
   const seen = new Set(beforeFixed.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`));
+  const alreadyTouching = beforeFixed.filter(() => true);
+  for (const p of beforeMove) {
+    if (pointBlocked(board, ring, p.x, p.y)) alreadyTouching.push(p);
+  }
   try {
     for (const extra of [0.012, 0.024, 0.04]) {
       ring.theta = wrapAngle(saved + dir * extra);
       const afterMove = ringBodySamples(ring);
-      const fresh: { x: number; y: number }[] = [];
+      const fresh: { x: number; y: number; connector?: boolean }[] = [];
       for (let i = 0; i < afterMove.length; i++) {
         const next = afterMove[i];
         const prev = beforeMove[i];
@@ -587,7 +613,10 @@ function ringStrikePoint(board: Board, ring: RingBody, sign: number): { x: numbe
       for (const p of fixedHits(board, ring)) {
         if (!seen.has(`${p.x.toFixed(3)},${p.y.toFixed(3)}`)) fresh.push(p);
       }
-      if (fresh.length > 0) return nearestPatch(board, fresh);
+      const claspFresh = fresh.filter((p) => p.connector);
+      if (claspFresh.length > 0) return outerPatch(ring, claspFresh);
+      const opened = fresh.filter((p) => !nearPoint(alreadyTouching, p.x, p.y));
+      if (opened.length > 0) return nearestPatch(board, opened);
     }
     const already = fixedHits(board, ring);
     for (const p of beforeMove) {

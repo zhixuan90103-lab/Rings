@@ -111,6 +111,8 @@ export function mountEditor(
       sheet = !sheet;
       render();
     }, sheet));
+    editorPanel.append(slider('镜头', play.zoomT(), 0, 1, 0.01, (t) => play.setZoomT(t)));
+    editorPanel.append(slider('上下', play.panT(), 0, 1, 0.01, (t) => play.setPanT(t)));
     editorPanel.append(tools);
 
     if (!sheet) return;

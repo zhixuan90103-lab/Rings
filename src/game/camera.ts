@@ -251,6 +251,32 @@ export function stepTwoFinger(
   return { gesture: { ...base, lock }, camera: clampCamera(shifted.x, shifted.y, zoom, bounds, frame) };
 }
 
+/** Editor slider runs this many times farther than the fit, and the same times closer. */
+export const EDITOR_ZOOM = 4;
+
+/** `t` is 0 four times farther than the fit, 0.5 at the fit, and 1 four times closer. */
+export function editorZoom(far: number, t: number): number {
+  const u = Math.min(1, Math.max(0, t));
+  return far * Math.pow(EDITOR_ZOOM, u * 2 - 1);
+}
+
+export function editorZoomT(far: number, zoom: number): number {
+  if (far <= 1e-4 || zoom <= 1e-4) return 0.5;
+  const t = (Math.log(zoom / far) / Math.log(EDITOR_ZOOM) + 1) / 2;
+  return Math.min(1, Math.max(0, t));
+}
+
+/** `t` is 0 one view below the fit, 0.5 at the fit, and 1 one view above. */
+export function editorPan(viewH: number, t: number): number {
+  const u = Math.min(1, Math.max(0, t));
+  return (u - 0.5) * 2 * viewH;
+}
+
+export function editorPanT(viewH: number, offset: number): number {
+  if (viewH <= 1e-4) return 0.5;
+  return Math.min(1, Math.max(0, offset / (2 * viewH) + 0.5));
+}
+
 /** Puts the world point that was under the first midpoint under the current midpoint. */
 export function cameraForPinch(
   start: { x: number; y: number; zoom: number; midX: number; midY: number },

@@ -47,6 +47,9 @@ import {
   cameraForFit,
   beginTwoFinger,
   clampCamera,
+  editorPan,
+  editorZoom,
+  editorZoomT,
   largestRing,
   stepTwoFinger,
   zoomCap,
@@ -73,6 +76,10 @@ export type PlayHandles = {
   pickAt: (world: { x: number; y: number }) => { kind: 'ring'; id: string } | { kind: 'bar'; id: string } | null;
   select: (id: string | null) => void;
   frame: () => void;
+  zoomT: () => number;
+  setZoomT: (t: number) => void;
+  panT: () => number;
+  setPanT: (t: number) => void;
 };
 
 type PieceView = {
@@ -154,6 +161,7 @@ export function mountPlay(options: {
   let pinch: TwoFinger | null = null;
   let hold = false;
   let fitted = true;
+  let panT = 0.5;
   let awaitingNext = false;
   const praise: PraiseCombo = freshPraise();
   let clearLeft = 0;
@@ -249,11 +257,13 @@ export function mountPlay(options: {
     const referenceZoom = frameFor(referenceBounds, usable).minZoom;
     limits.maxZoom = zoomCap(largestRing(board), limits.minZoom, largestRing(reference), referenceZoom);
     if (refit) {
+      panT = 0.5;
       const fit = cameraForFit(bounds, limits);
       applyCamera(fit.x, fit.y, fit.zoom);
       fitted = true;
       return;
     }
+    if (editing) return;
     const next = clampCamera(camera.position.x, camera.position.y, camera.zoom, bounds, limits);
     applyCamera(next.x, next.y, next.zoom);
   }
@@ -448,7 +458,7 @@ export function mountPlay(options: {
     showDragEffect(event, rejected);
   }
 
-  function rememberFinger(event: PointerEvent): { dx: number; dy: number } | null {
+  function rememberFinger(event: { clientX: number; clientY: number }): { dx: number; dy: number } | null {
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
     const dx = ((event.clientX - rect.left) / rect.width) * DESIGN_WIDTH;
@@ -789,6 +799,13 @@ export function mountPlay(options: {
     releaseFinger(event, true);
   }
 
+  function applyEditorView(zoom: number): void {
+    const fit = cameraForFit(bounds, limits);
+    const travel = viewSize().h / Math.max(zoom, 1e-4);
+    applyCamera(fit.x, fit.y + editorPan(travel, panT), zoom);
+    fitted = false;
+  }
+
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
@@ -890,6 +907,17 @@ export function mountPlay(options: {
       placeHalo();
     },
     frame: () => refreshLimits(true),
+    zoomT: () => editorZoomT(limits.minZoom, camera.zoom),
+    setZoomT: (t: number) => {
+      if (!editing) return;
+      applyEditorView(editorZoom(limits.minZoom, t));
+    },
+    panT: () => panT,
+    setPanT: (t: number) => {
+      if (!editing) return;
+      panT = Math.min(1, Math.max(0, t));
+      applyEditorView(camera.zoom);
+    },
     pointerWorld: worldFromEvent,
     pickAt: pickByRay,
     select: (id: string | null) => {

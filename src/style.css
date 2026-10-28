@@ -299,6 +299,64 @@ header {
     inset 0 0 0 2px #e7d3b4;
 }
 
+.result {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  background: rgba(74, 59, 48, 0.28);
+}
+
+.result[hidden] {
+  display: none;
+}
+
+.result-card {
+  width: min(280px, 100%);
+  padding: 28px 22px 22px;
+  border-radius: 28px;
+  background: #fffaf3;
+  box-shadow: 0 16px 40px rgba(80, 50, 20, 0.18);
+  text-align: center;
+}
+
+.result-title {
+  margin: 0 0 22px;
+  font-family: Fredoka, 'Arial Rounded MT Bold', 'PingFang SC', sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #4a3b30;
+}
+
+.result-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.result-actions button {
+  flex: 1;
+  min-height: 48px;
+  font-size: 16px;
+}
+
+#result-replay {
+  background: #efe6da;
+  color: #5c4a3a;
+}
+
+#result-next {
+  background: #e07a3d;
+  color: #fffaf3;
+}
+
+#result-next:disabled {
+  opacity: 0.45;
+}
+
 #dock {
   position: relative;
   z-index: 1;

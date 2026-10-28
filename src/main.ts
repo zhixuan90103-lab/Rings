@@ -96,7 +96,34 @@ async function boot(): Promise<void> {
   scene.add(ground);
 
   let latestLayout: StageLayout | null = null;
-  let advanceLevel = (): void => {};
+  const resultEl = document.getElementById('result');
+  const nextBtn = document.getElementById('result-next');
+  let levels: { advance: () => void; replay: () => void; atEnd: () => boolean } = {
+    advance: () => {},
+    replay: () => {},
+    atEnd: () => true,
+  };
+
+  function hideResult(): void {
+    resultEl?.setAttribute('hidden', '');
+  }
+
+  function showResult(): void {
+    if (nextBtn instanceof HTMLButtonElement) nextBtn.disabled = levels.atEnd();
+    resultEl?.removeAttribute('hidden');
+    if (levels.atEnd()) setStatus('');
+  }
+
+  document.getElementById('result-replay')?.addEventListener('click', () => {
+    hideResult();
+    levels.replay();
+  });
+  nextBtn?.addEventListener('click', () => {
+    if (levels.atEnd()) return;
+    hideResult();
+    levels.advance();
+  });
+
   const play = mountPlay({
     renderer,
     scene,
@@ -110,7 +137,7 @@ async function boot(): Promise<void> {
         void haptics.impact('light');
       }
     },
-    onCleared: () => advanceLevel(),
+    onCleared: () => showResult(),
   });
   let preview: DevicePreviewController;
 
@@ -144,7 +171,7 @@ async function boot(): Promise<void> {
 
   // Optional: document.body.classList.add('debug-safe-area')
 
-  advanceLevel = mountEditor(play, setStatus, { setLevel, resetMoves: () => setScore(0) }).advance;
+  levels = mountEditor(play, setStatus, { setLevel, resetMoves: () => setScore(0) });
 
   if (haptics.isNativeIos()) {
     setLog(

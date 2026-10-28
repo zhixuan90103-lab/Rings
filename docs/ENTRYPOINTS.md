@@ -34,6 +34,9 @@ index.html
       #stage
         canvas
         #ui-root
+          header.hud
+          #result          过关结算，默认 hidden
+          #dock            #status 只留编辑提示
 #device-switcher / #device-label   (web only)
 ```
 
@@ -66,5 +69,6 @@ HUD 状态行有 `plugin: true/false`。`false` = 仍在默认 `CAPBridgeViewCon
 | 震动原生 | `plugins/native-haptics/*.swift` + bootstrap |
 | 启动 HUD | `index.html` + `main.ts` |
 | 关卡编辑 | `src/game/editor.ts`、`src/game/levelio.ts`、`public/levels/`。保存只在 `npm run dev` |
+| 过关结算 | `play.ts` 计时后 `onCleared`；`index.html` 的 `#result` 与 `main.ts` 接重玩、下一关 |
 | 音效（规划） | [AUDIO.md](./AUDIO.md) |
 | 震动接线 | [HAPTICS.md](./HAPTICS.md) |

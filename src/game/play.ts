@@ -356,13 +356,13 @@ export function mountPlay(options: {
     }
   }
 
-  function showImpact(kind: 'ring' | 'bar', id: string, sign: number): void {
+  function showImpact(kind: 'ring' | 'bar', id: string, sign: number, sparks: boolean): void {
     const view = views.find((item) => item.id === id && !item.falling);
     if (!view) return;
     const ring = ringById(board, id);
     const bar = barById(board, id);
     const color = ring?.color ?? bar?.color ?? colorOf(id);
-    feedback.impact(view.mesh, strikePoint(board, kind, id, sign), color);
+    feedback.impact(view.mesh, sparks ? strikePoint(board, kind, id, sign) : null, color);
   }
 
   function worldFromEvent(event: PointerEvent, clampToDesign: boolean): { x: number; y: number } | null {
@@ -595,7 +595,7 @@ export function mountPlay(options: {
     if (blocked && (effect.type === 'hit' || feedback.state.armed)) {
       feedback.state.armed = false;
       feedback.state.free = 0;
-      showImpact(drag.kind, drag.id, effect.type === 'hit' ? effect.sign : Math.sign(rejected) || 1);
+      showImpact(drag.kind, drag.id, effect.type === 'hit' ? effect.sign : Math.sign(rejected) || 1, effect.type === 'hit');
     }
     if (effect.type === 'free') {
       feedback.state.armed = effect.armed;
@@ -877,6 +877,7 @@ export function mountPlay(options: {
     pose,
     copy: () => structuredClone(board),
     setEditing: (on: boolean) => {
+      if (on === editing) return;
       editing = on;
       fingers.clear();
       pinch = null;

@@ -36,10 +36,10 @@ export function mountEditor(
     setLevel: () => {},
     resetMoves: () => {},
   },
-): { advance: () => void } {
+): { advance: () => void; replay: () => void; atEnd: () => boolean } {
   const levelHost = document.getElementById('levels');
   const editorPanel = document.getElementById('editor');
-  if (!levelHost || !editorPanel) return { advance: () => {} };
+  if (!levelHost || !editorPanel) return { advance: () => {}, replay: () => {}, atEnd: () => true };
 
   let level = 1;
   let tool: Tool = 'move';
@@ -323,7 +323,7 @@ export function mountEditor(
     play.setEditing(mode === 'edit');
     play.replace(structuredClone(authored));
     if (selection && mode === 'edit') play.select(selection.id);
-    setStatus(mode === 'edit' ? `编辑第 ${level} 关` : `试玩第 ${level} 关`);
+    setStatus(mode === 'edit' ? `编辑第 ${level} 关` : '');
     render();
   }
 
@@ -338,7 +338,7 @@ export function mountEditor(
     play.setEditing(true);
     commit();
     play.frame();
-    setStatus(`第 ${level} 关`);
+    setStatus(mode === 'edit' ? `编辑第 ${level} 关` : '');
   }
 
   async function persist(): Promise<void> {
@@ -507,12 +507,16 @@ export function mountEditor(
 
   const advance = (): void => {
     if (mode === 'edit') return;
-    if (level >= LEVEL_COUNT) {
-      setStatus('已完成');
-      return;
-    }
+    if (level >= LEVEL_COUNT) return;
     void open(level + 1);
   };
+
+  const replay = (): void => {
+    if (mode === 'edit') return;
+    void open(level);
+  };
+
+  const atEnd = (): boolean => level >= LEVEL_COUNT;
 
   document.getElementById('hud-settings')?.addEventListener('click', () => {
     settingsOpen = !settingsOpen;
@@ -520,7 +524,7 @@ export function mountEditor(
   });
 
   const canvas = document.querySelector('#stage canvas');
-  if (!(canvas instanceof HTMLCanvasElement)) return { advance };
+  if (!(canvas instanceof HTMLCanvasElement)) return { advance, replay, atEnd };
 
   canvas.addEventListener('pointerdown', (event) => {
     if (mode !== 'edit') return;
@@ -590,11 +594,12 @@ export function mountEditor(
   });
 
   canvas.addEventListener('pointerup', () => {
+    if (mode !== 'edit') return;
     drag = null;
     render();
   });
 
   void open(1);
 
-  return { advance };
+  return { advance, replay, atEnd };
 }

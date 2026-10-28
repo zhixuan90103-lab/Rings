@@ -4,7 +4,7 @@
 
 ## 1. 定位
 
-可复制的 **竖屏 WebGPU 手游底座**：能 dev、能 build、能真机、能震动、桌面≈手机/Pad。打开后试玩 `public/levels/1.json`：环可转，杆可滑，银卡扣锁定。设置里打开关卡模式才编辑 1 到 5 关。外形见 [PARTS.md](./PARTS.md)，规则、跟手和编辑见 [ROTATE-RINGS.md](./ROTATE-RINGS.md)。
+可复制的 **竖屏 WebGPU 手游底座**：能 dev、能 build、能真机、能震动、桌面≈手机/Pad。打开后试玩 `public/levels/1.json`：环可转，杆可滑，银卡扣锁定。最后一件离场约 1 秒后弹出结算，重玩或下一关。设置里打开关卡模式才编辑 1 到 5 关。外形见 [PARTS.md](./PARTS.md)，规则、跟手、结算和编辑见 [ROTATE-RINGS.md](./ROTATE-RINGS.md)。
 
 ## 2. 目录
 

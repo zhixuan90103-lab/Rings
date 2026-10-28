@@ -5,7 +5,7 @@
  */
 
 import { DESIGN_HEIGHT, DESIGN_WIDTH } from '../adapt/design';
-import { signedDelta } from './angle';
+import { gapCovers, signedDelta } from './angle';
 import { barById, moveBar, projectBar, ringById, rotateRing, syncPins, type BarBody, type Board } from './board';
 import { VIEW_H } from './camera';
 import { PART, buckleMetrics } from './parts';
@@ -19,6 +19,8 @@ export const INTENT_WINDOW = 0.02;
 export const INTENT_SLEEVE = 0.02;
 /** Along-axis travel, as a fraction of design width, before a clear stroke may change the score. */
 export const INTENT_CLEAR = 0.01;
+/** A miss this close to a bar, inside a ring hole, counts as hitting that bar. */
+export const INTENT_BAR_NEAR = 0.02;
 
 /**
  * One table with `docs/ROTATE-RINGS.md` §4. Lower wins.
@@ -35,6 +37,8 @@ const SCORE = {
   ray: 0.05,
   moves: 3,
   clearAxis: 1.2,
+  /** Crosses every band, so a clear stroke in a gap mouth can pick the other piece. */
+  gapSwing: 20,
   lock: 0.75,
   axis: 1.5,
 } as const;
@@ -167,10 +171,16 @@ export function listCandidates(board: Board, x: number, y: number, pad: number, 
     if (barCovers(bar, x, y) || onBuckle) put(hitOf('bar', bar.id, 'solid', free.neg, free.pos, distToBar(bar, x, y), ray));
     else {
       const near = barPad(bar, x, y, pad, free);
-      if (near !== null) put(hitOf('bar', bar.id, 'pad', free.neg, free.pos, near, ray));
+      const beside = near !== null && near <= pad * (INTENT_BAR_NEAR / INTENT_PAD) && inRingHole(board, x, y);
+      if (beside) put(hitOf('bar', bar.id, 'solid', free.neg, free.pos, near, ray));
+      else if (near !== null) put(hitOf('bar', bar.id, 'pad', free.neg, free.pos, near, ray));
     }
   }
   return hits;
+}
+
+function inRingHole(board: Board, x: number, y: number): boolean {
+  return board.rings.some((ring) => dist(ring.x, ring.y, x, y) <= ring.inner && !ringCovers(ring, x, y));
 }
 
 function travelOf(board: Board, hit: IntentHit, x0: number, y0: number, x1: number, y1: number): { along: number; cross: number } {
@@ -216,12 +226,62 @@ function nearness(hit: IntentHit): number {
   return Math.min(hit.near, 2) * SCORE.tie;
 }
 
-function intentScore(hit: IntentHit, along: number, cross: number, gesture: boolean): number {
+function intentScore(hit: IntentHit, along: number, cross: number, gesture: boolean, swing: number): number {
   let score = band(hit) + nearness(hit) - (hit.ray ? SCORE.ray : 0);
   if (!gesture || !moves(hit, along)) return score;
   score -= SCORE.moves;
-  if (Math.abs(along) > Math.abs(cross) * SCORE.axis) score -= SCORE.clearAxis;
+  if (Math.abs(along) > Math.abs(cross) * SCORE.axis) score -= SCORE.clearAxis + swing;
   return score;
+}
+
+function hornRadius(inner: number, outer: number): number {
+  return (outer - inner) / 2;
+}
+
+/** The open mouth, plus the round caps on each side. The hole center stays out. */
+function pressInGapMouth(ring: { x: number; y: number; inner: number; outer: number; gap: number; theta: number }, x: number, y: number): boolean {
+  const dx = x - ring.x;
+  const dy = y - ring.y;
+  const d = Math.hypot(dx, dy);
+  const horn = hornRadius(ring.inner, ring.outer);
+  if (d < ring.inner - horn || d > ring.outer + horn) return false;
+  const widen = Math.asin(Math.min(1, horn / Math.max(d, 1e-4)));
+  return gapCovers(ring.theta, Math.atan2(dy, dx), ring.gap + widen * 2);
+}
+
+function barCrossesGap(ring: { x: number; y: number; inner: number; outer: number; gap: number; theta: number }, bar: BarBody): boolean {
+  const seg = barSegment(bar, bar.t);
+  const horn = hornRadius(ring.inner, ring.outer);
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    const x = seg.ax + (seg.bx - seg.ax) * t;
+    const y = seg.ay + (seg.by - seg.ay) * t;
+    const dx = x - ring.x;
+    const dy = y - ring.y;
+    const d = Math.hypot(dx, dy);
+    if (d + bar.half < ring.inner || d - bar.half > ring.outer) continue;
+    const widen = Math.asin(Math.min(1, (bar.half + horn) / Math.max(d, bar.half)));
+    if (gapCovers(ring.theta, Math.atan2(dy, dx), ring.gap + widen * 2)) return true;
+  }
+  return false;
+}
+
+/** Ring and bar ids sharing a gap the finger is in. Direction may cross their bands. */
+function gapContest(board: Board, hits: IntentHit[], x: number, y: number): Set<string> {
+  const ids = new Set<string>();
+  for (const ringHit of hits) {
+    if (ringHit.kind !== 'ring') continue;
+    const ring = ringById(board, ringHit.id);
+    if (!ring || !pressInGapMouth(ring, x, y)) continue;
+    for (const barHit of hits) {
+      if (barHit.kind !== 'bar') continue;
+      const bar = barById(board, barHit.id);
+      if (!bar || !barCrossesGap(ring, bar)) continue;
+      ids.add(ring.id);
+      ids.add(bar.id);
+    }
+  }
+  return ids;
 }
 
 /** The lower score wins. A lead of `SCORE.lock` locks before the window; a tie waits until `decided`. */
@@ -236,16 +296,25 @@ export function chooseIntent(
   clearAt = intentWorld(INTENT_CLEAR, 1),
 ): IntentHit | null {
   if (hits.length === 0) return null;
+  const contest = gapContest(board, hits, x0, y0);
   const ranked = hits
     .map((hit) => {
       const travel = travelOf(board, hit, x0, y0, x1, y1);
       const clear =
         Math.abs(travel.along) > Math.abs(travel.cross) * SCORE.axis && Math.abs(travel.along) >= clearAt;
-      return { hit, score: intentScore(hit, travel.along, travel.cross, decided || clear) };
+      const swing = contest.has(hit.id) && clear && moves(hit, travel.along) ? SCORE.gapSwing : 0;
+      return { hit, swing, score: intentScore(hit, travel.along, travel.cross, decided || clear, swing) };
     })
     .sort((a, b) => a.score - b.score);
   const best = ranked[0];
   const second = ranked[1];
+  const mouthOpen =
+    contest.size >= 2 &&
+    !decided &&
+    contest.has(best.hit.id) &&
+    ranked.some((item) => item.hit.id !== best.hit.id && contest.has(item.hit.id)) &&
+    !ranked.some((item) => contest.has(item.hit.id) && item.swing > 0);
+  if (mouthOpen) return null;
   if (!second || best.score + SCORE.lock < second.score || decided) return best.hit;
   return null;
 }

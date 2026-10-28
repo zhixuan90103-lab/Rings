@@ -310,6 +310,35 @@ occupied.volumes = false;
 const besideStick = listCandidates(occupied, 0, 0.25, pad);
 assert(besideStick.some((hit) => hit.id === 'host' && hit.place === 'foot'), 'a miss beside the bar still sees the ring');
 assert(chooseIntent(occupied, besideStick, 0, 0.25, 0, 0.25, false)?.id === 'host', 'the ring footprint outscores the bar pad');
+const closeToStick = listCandidates(occupied, 0, 0.12, pad);
+assert(closeToStick.some((hit) => hit.id === 'stick' && hit.place === 'solid'), 'a hole press within 2% of the bar counts as the bar');
+assert(chooseIntent(occupied, closeToStick, 0, 0.12, 0, 0.12, false)?.id === 'stick', 'a press close to the bar in the hole selects the bar');
+const gapMouth = {
+  x: ((occupied.rings[0].inner + occupied.rings[0].outer) / 2),
+  y: 0,
+};
+const inMouth = listCandidates(occupied, gapMouth.x, gapMouth.y, pad);
+assert(inMouth.some((hit) => hit.id === 'stick' && hit.place === 'solid'), 'the bar in the gap is a solid');
+assert(inMouth.some((hit) => hit.id === 'host' && hit.place === 'foot'), 'the gap around that bar is the ring footprint');
+assert(chooseIntent(occupied, inMouth, gapMouth.x, gapMouth.y, gapMouth.x, gapMouth.y, false) === null, 'a bar in the gap waits for the stroke');
+assert(
+  chooseIntent(occupied, inMouth, gapMouth.x, gapMouth.y, gapMouth.x + 0.08, gapMouth.y, false)?.id === 'stick',
+  'sliding along the bar in the gap takes the bar',
+);
+assert(
+  chooseIntent(occupied, inMouth, gapMouth.x, gapMouth.y, gapMouth.x, gapMouth.y + 0.08, false)?.id === 'host',
+  'a tangential stroke in the gap takes the ring',
+);
+const horn = occupied.rings[0].gap / 2;
+const hornPoint = {
+  x: gapMouth.x * Math.cos(horn),
+  y: gapMouth.x * Math.sin(horn),
+};
+const onHorn = listCandidates(occupied, hornPoint.x, hornPoint.y, pad);
+assert(
+  chooseIntent(occupied, onHorn, hornPoint.x, hornPoint.y, hornPoint.x + 0.08, hornPoint.y, false)?.id === 'stick',
+  'sliding along the bar from the gap horn takes the bar',
+);
 const stacked = emptyBoard();
 stacked.volumes = true;
 stacked.rings.push(

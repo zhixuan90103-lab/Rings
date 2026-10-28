@@ -159,7 +159,7 @@ void haptics.stopContinuous();
 ## 2. 一次接对：五条硬约定
 
 1. **改 Swift 只改** `plugins/native-haptics/`，然后 **`npm run ios:bootstrap`**。不要只改 `ios/App/App/` 里的副本。
-2. **玩法禁止** `registerPlugin('AdvancedHaptics')` 和 `navigator.vibrate`。只走 `src/utils/haptics.ts`（或再包一层 `gameHaptics`）。
+2. **玩法禁止** `registerPlugin('AdvancedHaptics')` 和 `navigator.vibrate`。只走 `src/utils/haptics.ts`。试玩的四次调用在 `src/game/play.ts`。
 3. **不要依赖 JS `prepare()` 当初始化。** 原生 `load()` 已 `initEngine()`。回前台最多再点一次轻 `impact('soft')` 预热 UIKit，不是必须。
 4. **先确认插件已注册，再谈手感。** 真机状态应看到 `haptics ios: true`，且 `isPluginAvailable('AdvancedHaptics') === true`。
 5. **节奏在游戏层。** 插件只负责「震一下」。cooldown、具名 pattern、开关，仿音效 Catalog，不要塞进 Swift。
@@ -207,38 +207,25 @@ npm run cap:open
 
 `jsName` 必须是 **`AdvancedHaptics`**，和 `isPluginAvailable('AdvancedHaptics')` 同一字符串。
 
-### 3.3 玩法层（本壳没有，自己加）
+### 3.3 玩法层（试玩已接）
 
-不要在 `main.ts` 里到处 `haptics.impact`。加一层具名事件：
+试玩只在 `src/game/play.ts` 里发震，规则见 [ROTATE-RINGS.md](./ROTATE-RINGS.md) §4。不另建 `gameHaptics`，也不在 `main.ts` 里散落调用。都是 `void`，不 `await`。
 
-```ts
-// 示例：只允许从这里发震
-export const gameHaptics = {
-  buttonTap() {
-    if (!enabled || onCooldown('button', 60)) return;
-    void haptics.impact('light');           // 短点击：UIKit
-  },
-  popSmall() {
-    if (!enabled || onCooldown('popSmall', 90)) return;
-    void haptics.playPattern([{ type: 'transient', intensity: 0.4, sharpness: 0.3 }]);
-  },
-  stackImpact(intensity: number) {
-    if (!enabled || onCooldown('stack', 90)) return;
-    void haptics.stackImpact(intensity, 0.15);
-  },
-};
-```
+四下都走 `playTransient`。强度和锐度的默认值在 `src/game/hapticFeel.ts`。齿轮设置里可以改，并立刻试一下。改过的数记在本机 `localStorage`（`rings.haptic-feel`）。
 
-规则：
+| 画面 | 默认强度 / 锐度 |
+|------|----------------|
+| 按住并锁定一件 | 0.32 / 0.25 |
+| 已经带动过、溅出火花 | 0.72 / 0.82。再亮的间隔跟火花：环约 0.08 弧度，杆 0.03 |
+| 无效晃动（没带动的发亮，或松手的点击晃动） | 0.45 / 0.30。同一次拖动只一次 |
+| 一次抬手解开至少一件 | 0.90 / 0.55。一次松手一次，不按件数连震 |
 
-- 所有出口先查 **开关**，再查 **cooldown**
-- 短系统感：`impact` / `selection`（UIKit）
-- 可调强弱、碰撞 patter：`stackImpact` / `playPattern`（Core Haptics）
+再加震时仍只走 `src/utils/haptics.ts`：
+
+- 短系统感：`selection` / `notification` / `impact`（UIKit）
+- 可调强弱：`playTransient` / `stackImpact`（Core Haptics）
 - 长摩擦：`startContinuous` + `stopContinuous`，离开关卡必须 stop
-- 调用 **fire-and-forget**（`void`），不要 `await` 堵逻辑帧
-- 与音效并列：`gameHaptics.x()` 旁一行 `audio.playSfx('x')`
-
-强度映射、pattern 表放到 `src/config/HapticsConfig.ts`（或和 Audio Catalog 同级），不要写死在物理循环里。
+- 桌面多数没有马达。`not_native_ios` 时封装会试 `navigator.vibrate`，不要在玩法里再调一次
 
 ### 3.4 桌面 vs 真机
 
@@ -279,7 +266,7 @@ Swift `pluginMethods` **只有这些**。JS 多调一个就会 UNIMPLEMENTED。
 | 桌面按钮不震 | 不是 iOS App | 正常 |
 | 第一次轻、后面才正常 | UIKit generator 未 prepare；或 engine 刚 start | 可接受；`load()` 已 start engine。不要为此再发明 JS prepare 桥方法，除非 Swift 真加了 |
 | 连打卡顿 / 震成一片 | 每事件一次桥且无 cooldown | 玩法层节流，参考音效 Batcher 思路（震动通常不必批桥，但必须 cooldown） |
-| 设置关了还在震 | 业务直接调了插件 | 只保留 haptics.ts / gameHaptics 四个出口 |
+| 设置关了还在震 | 业务直接调了插件 | 只从 `haptics.ts` 出去。试玩只在 `play.ts` 调 |
 | 横屏或旋转后丢震 | 本壳锁竖屏；VC 必须是 Bridge | 不要换回默认 VC |
 
 ## 6. 和音效一起接

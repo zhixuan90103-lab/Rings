@@ -1,4 +1,5 @@
 import type { PlayHandles } from './play';
+import { hapticFeel, hapticLabel, pulseHaptic, resetHapticFeel, setHapticPair, type HapticKind } from './hapticFeel';
 import type { BarBody, Board, RingBody } from './board';
 import { syncPins } from './board';
 import { wrapAngle } from './angle';
@@ -376,7 +377,62 @@ export function mountEditor(
       else render();
     }, levelMode));
     pane.append(row);
+    pane.append(hapticPane());
     return pane;
+  }
+
+  function hapticPane(): HTMLDivElement {
+    const box = document.createElement('div');
+    box.className = 'haptic-tune';
+    const title = document.createElement('p');
+    title.className = 'panel-title';
+    title.textContent = '震动';
+    box.append(title);
+    const kinds: HapticKind[] = ['grab', 'hit', 'invalid', 'clear'];
+    for (const kind of kinds) box.append(hapticRow(kind));
+    const reset = button('恢复默认', () => {
+      resetHapticFeel();
+      render();
+    });
+    box.append(reset);
+    return box;
+  }
+
+  function hapticRow(kind: HapticKind): HTMLDivElement {
+    const row = document.createElement('div');
+    row.className = 'haptic-row';
+    const name = document.createElement('span');
+    name.textContent = hapticLabel(kind);
+    const feel = hapticFeel()[kind];
+    const intensity = tuneSlider('强度', feel.intensity, (value) => {
+      setHapticPair(kind, { intensity: value, sharpness: hapticFeel()[kind].sharpness });
+    });
+    const sharpness = tuneSlider('锐度', feel.sharpness, (value) => {
+      setHapticPair(kind, { intensity: hapticFeel()[kind].intensity, sharpness: value });
+    });
+    row.append(name, intensity, sharpness, button('试', () => pulseHaptic(kind)));
+    return row;
+  }
+
+  function tuneSlider(name: string, value: number, onInput: (value: number) => void): HTMLLabelElement {
+    const node = document.createElement('label');
+    node.className = 'editor-slider';
+    const caption = document.createElement('span');
+    caption.textContent = `${name} ${value.toFixed(2)}`;
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = '0';
+    input.max = '1';
+    input.step = '0.01';
+    input.value = String(value);
+    input.addEventListener('input', () => {
+      const next = Number(input.value);
+      caption.textContent = `${name} ${next.toFixed(2)}`;
+      onInput(next);
+    });
+    input.addEventListener('pointerdown', (event) => event.stopPropagation());
+    node.append(caption, input);
+    return node;
   }
 
   function button(text: string, onClick: () => void, pressed = false): HTMLButtonElement {

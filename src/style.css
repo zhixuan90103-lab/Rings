@@ -381,6 +381,40 @@ header {
   color: #3a2414;
   font-size: 14px;
   font-weight: 700;
+  max-height: 46vh;
+  overflow: auto;
+}
+
+.haptic-tune {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.haptic-tune .panel-title {
+  color: #6b4b32;
+}
+
+.haptic-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.haptic-row > span {
+  flex: 0 0 36px;
+}
+
+.haptic-row .editor-slider {
+  flex: 1 1 120px;
+  min-width: 120px;
+}
+
+.haptic-row button {
+  min-height: 36px;
+  padding: 6px 12px;
 }
 
 header h1 {

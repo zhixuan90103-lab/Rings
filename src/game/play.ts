@@ -33,6 +33,7 @@ import { dragEffect, mountFeedback } from './feedback';
 import { breakPraise, freshPraise, notePraiseClear, showPraise, type PraiseCombo } from './praise';
 import { strikePoint } from './volume';
 import {
+  INTENT_CLEAR,
   INTENT_PAD,
   INTENT_SLEEVE,
   INTENT_WINDOW,
@@ -437,7 +438,16 @@ export function mountPlay(options: {
     if (!pending || drag) return;
     const held = pending;
     const last = held.samples[held.samples.length - 1];
-    const hit = chooseIntent(board, held.hits, held.x0, held.y0, last.x, last.y, decided);
+    const hit = chooseIntent(
+      board,
+      held.hits,
+      held.x0,
+      held.y0,
+      last.x,
+      last.y,
+      decided,
+      intentWorld(INTENT_CLEAR, camera.zoom),
+    );
     if (!hit) {
       if (!decided) return;
       pending = null;
@@ -527,6 +537,9 @@ export function mountPlay(options: {
     pending = { hits, x0: world.x, y0: world.y, dx: point.dx, dy: point.dy, samples: [{ x: world.x, y: world.y }] };
     pointerId = event.pointerId;
     canvas.setPointerCapture(event.pointerId);
+    if (chooseIntent(board, hits, world.x, world.y, world.x, world.y, false, intentWorld(INTENT_CLEAR, camera.zoom))) {
+      lockPending(event, true);
+    }
   }
 
   function dragPose(current: Drag): number {

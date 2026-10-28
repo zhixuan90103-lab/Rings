@@ -124,7 +124,7 @@ assert(Math.abs(pad - (INTENT_PAD * DESIGN_WIDTH * VIEW_H) / DESIGN_HEIGHT) < 1e
 const loose = levelPin();
 const looseRing = loose.rings[0];
 const holeHit = listCandidates(loose, looseRing.x, looseRing.y, pad);
-assert(holeHit.some((hit) => hit.id === looseRing.id && !hit.base), 'the hole is an enlarged ring hit');
+assert(holeHit.length === 1 && holeHit[0].id === looseRing.id && holeHit[0].place === 'foot', 'an empty hole is the ring footprint');
 const arc = looseRing.inner * 0.6;
 const tangential = chooseIntent(
   loose,
@@ -135,7 +135,185 @@ const tangential = chooseIntent(
   looseRing.y + arc * Math.sin(0.5),
   false,
 );
-assert(tangential?.id === looseRing.id, 'a tangential move in the hole confirms the ring');
+assert(tangential?.id === looseRing.id, 'a press in the hole selects the ring before any travel');
+const gapPoint = {
+  x: looseRing.x + Math.cos(looseRing.theta) * (looseRing.inner + looseRing.outer) * 0.5,
+  y: looseRing.y + Math.sin(looseRing.theta) * (looseRing.inner + looseRing.outer) * 0.5,
+};
+const gapHit = listCandidates(loose, gapPoint.x, gapPoint.y, pad);
+assert(gapHit.length === 1 && gapHit[0].id === looseRing.id && gapHit[0].place === 'foot', 'an empty gap is the ring footprint');
+const outside = listCandidates(loose, looseRing.x + looseRing.outer + pad * 0.5, looseRing.y, pad);
+assert(outside.some((hit) => hit.id === looseRing.id && hit.place === 'pad'), 'outside the disc is only a pad');
+const occupied = emptyBoard();
+occupied.rings.push({
+  id: 'host',
+  kind: 'ring',
+  x: 0,
+  y: 0,
+  inner: 0.5,
+  outer: 0.8,
+  gap: 1.2,
+  theta: 0,
+  connectors: [],
+});
+occupied.bars.push({ id: 'stick', kind: 'bar', x0: -1, y0: 0, x1: 1, y1: 0, half: 0.08, grip: 0.9, t: 0.5 });
+const onStick = listCandidates(occupied, 0, 0, pad);
+assert(onStick.some((hit) => hit.id === 'stick' && hit.place === 'solid'), 'a bar in the hole is a solid');
+assert(chooseIntent(occupied, onStick, 0, 0, 0, 0, false)?.id === 'stick', 'a bar that can slide outscores the hole');
+assert(chooseIntent(occupied, onStick, 0, 0, 0.2, 0.2, true)?.id === 'stick', 'a gesture does not take a clicked bar away');
+const direct = emptyBoard();
+direct.volumes = false;
+direct.rings.push(
+  {
+    id: 'stuck',
+    kind: 'ring',
+    x: 0,
+    y: 0,
+    inner: 0.42,
+    outer: 0.68,
+    gap: 0.02,
+    theta: 0,
+    connectors: [],
+  },
+  {
+    id: 'wide',
+    kind: 'ring',
+    x: 0,
+    y: 0,
+    inner: 1.4,
+    outer: 1.8,
+    gap: 1.2,
+    theta: 0,
+    connectors: [],
+  },
+);
+direct.pins.push({
+  id: 'freeze-stuck',
+  ownerId: null,
+  localAngle: 0,
+  localRadius: 0,
+  x: 0,
+  y: 0.55,
+  role: 'block',
+  limitRingId: null,
+  stopHalf: 0,
+});
+const onStuck = listCandidates(direct, -0.55, 0, pad);
+assert(onStuck.some((hit) => hit.id === 'stuck' && hit.place === 'solid' && !hit.neg && !hit.pos), 'the clicked ring cannot turn');
+assert(onStuck.some((hit) => hit.id === 'wide' && hit.place === 'foot' && (hit.neg || hit.pos)), 'the disc behind it can turn');
+assert(chooseIntent(direct, onStuck, -0.55, 0, -0.55, 0, false)?.id === 'wide', 'a stuck solid yields to the live hole around it');
+occupied.volumes = false;
+const besideStick = listCandidates(occupied, 0, 0.25, pad);
+assert(besideStick.some((hit) => hit.id === 'host' && hit.place === 'foot'), 'a miss beside the bar still sees the ring');
+assert(chooseIntent(occupied, besideStick, 0, 0.25, 0, 0.25, false)?.id === 'host', 'the ring footprint outscores the bar pad');
+const stacked = emptyBoard();
+stacked.volumes = true;
+stacked.rings.push(
+  {
+    id: 'host',
+    kind: 'ring',
+    x: 0,
+    y: 0,
+    inner: 0.42,
+    outer: 0.68,
+    gap: 0.02,
+    theta: 0,
+    connectors: [],
+  },
+  {
+    id: 'owner',
+    kind: 'ring',
+    x: -1.35,
+    y: 0,
+    inner: 0.42,
+    outer: 0.68,
+    gap: 1.2,
+    theta: 0,
+    connectors: [{ angle: 0, stem: 0.32, target: 'host' }],
+  },
+);
+stacked.pins.push({
+  id: 'freeze',
+  ownerId: null,
+  localAngle: 0,
+  localRadius: 0,
+  x: 0,
+  y: 0.55,
+  role: 'block',
+  limitRingId: null,
+  stopHalf: 0,
+});
+const overlap = listCandidates(stacked, -0.55, 0, pad);
+assert(overlap.filter((hit) => hit.place === 'solid').length === 2, 'a handle and a ring are both solids');
+const preferHost = chooseIntent(stacked, overlap, -0.55, 0, -0.55, 0, false);
+assert(preferHost?.id === 'host', 'a nested handle cannot turn, so the ring under it wins');
+const inHole = emptyBoard();
+inHole.volumes = false;
+inHole.rings.push(
+  {
+    id: 'host',
+    kind: 'ring',
+    x: 0,
+    y: 0,
+    inner: 0.5,
+    outer: 0.8,
+    gap: 1.2,
+    theta: Math.PI / 2,
+    connectors: [],
+  },
+  {
+    id: 'owner',
+    kind: 'ring',
+    x: -0.9,
+    y: 0,
+    inner: 0.42,
+    outer: 0.68,
+    gap: 0.02,
+    theta: 0,
+    connectors: [{ angle: 0, stem: 0.5, target: 'host' }],
+  },
+);
+inHole.pins.push({
+  id: 'freeze-owner',
+  ownerId: null,
+  localAngle: 0,
+  localRadius: 0,
+  x: -1.45,
+  y: 0,
+  role: 'block',
+  limitRingId: null,
+  stopHalf: 0,
+});
+const handleInHole = listCandidates(inHole, 0, 0, pad);
+assert(handleInHole.some((hit) => hit.id === 'owner' && hit.place === 'solid' && !hit.neg && !hit.pos), 'the handle in the hole cannot turn');
+assert(handleInHole.some((hit) => hit.id === 'host' && hit.place === 'foot' && (hit.neg || hit.pos)), 'the hole around that handle can turn');
+assert(chooseIntent(inHole, handleInHole, 0, 0, 0, 0, false)?.id === 'host', 'a stuck handle in the hole yields to that ring');
+const discs = emptyBoard();
+discs.volumes = false;
+discs.rings.push(
+  { id: 'near', kind: 'ring', x: 0, y: 0, inner: 0.9, outer: 1.2, gap: 1, theta: 0, connectors: [] },
+  { id: 'far', kind: 'ring', x: 1, y: 0, inner: 1.3, outer: 1.6, gap: 1, theta: 0, connectors: [] },
+);
+const bothDiscs = listCandidates(discs, 0, 0, pad);
+assert(bothDiscs.filter((hit) => hit.place === 'foot').length === 2, 'the press sits in two holes');
+assert(chooseIntent(discs, bothDiscs, 0, 0, 0, 0, false)?.id === 'near', 'a hole more than 0.75 closer locks on the press');
+const closeDiscs = emptyBoard();
+closeDiscs.volumes = false;
+closeDiscs.rings.push(
+  { id: 'near', kind: 'ring', x: 0, y: 0, inner: 0.9, outer: 1.2, gap: 1, theta: 0, connectors: [] },
+  { id: 'far', kind: 'ring', x: 0.4, y: 0, inner: 0.9, outer: 1.2, gap: 1, theta: Math.PI, connectors: [] },
+);
+const closeHits = listCandidates(closeDiscs, 0, 0, pad);
+assert(chooseIntent(closeDiscs, closeHits, 0, 0, 0, 0, false) === null, 'a smaller center gap waits for the stroke');
+assert(chooseIntent(closeDiscs, closeHits, 0, 0, 0, 0, true)?.id === 'near', 'after the window the closer hole still wins');
+const twitch = chooseIntent(discs, bothDiscs, 0, 0, 0.002, 0.002, false);
+assert(twitch === null || twitch.id === 'near', 'a twitch does not hand the press to the farther hole');
+const wing = emptyBoard();
+wing.volumes = false;
+wing.bars.push({ id: 'stick', kind: 'bar', x0: -1, y0: 0, x1: 1, y1: 0, half: 0.08, grip: 0.9, t: 0.5 });
+wing.latches.push({ id: 'buckle', barId: 'stick', x: 0, y: 0, t0: 0, t1: 1, release: 'sleeve' });
+const wingHit = listCandidates(wing, 0, 0.1, pad);
+assert(wingHit.some((hit) => hit.id === 'stick' && hit.place === 'solid'), 'the buckle grip counts as its bar');
 assert(!gapCovers(blue.theta, jointAngle, blue.gap), 'this turn has not reached the clasp');
 const stillCaught = settle(basic, { kind: 'ring', id: 'blue', theta: blue.theta, x: 0, y: 0 });
 assert(!stillCaught.includes('blue'), 'pointerup away from the clasp stays locked');

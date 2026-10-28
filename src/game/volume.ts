@@ -89,6 +89,22 @@ function inBox(box: { x: number; y: number; angle: number; length: number; width
   return Math.abs(lx) <= box.length / 2 && Math.abs(ly) <= box.width / 2;
 }
 
+/** Drawn ring metal: band with the gap removed, both caps, stem, and clasp. */
+export function ringCovers(ring: RingBody, x: number, y: number): boolean {
+  return ringHolds(ring, x, y);
+}
+
+/** Drawn capsule. The silver buckle is not part of the bar. */
+export function barCovers(bar: BarBody, x: number, y: number): boolean {
+  const seg = barSegment(bar, bar.t);
+  return distToSegment(x, y, seg.ax, seg.ay, seg.bx, seg.by) <= bar.half;
+}
+
+/** Silver sleeve and the two grips. A press here is not a bar press. */
+export function buckleCovers(bar: BarBody, x: number, y: number, px: number, py: number): boolean {
+  return buckleHolds(bar, x, y, px, py);
+}
+
 function ringHolds(ring: RingBody, x: number, y: number): boolean {
   if (ringSector(ring, x, y)) return true;
   const mid = (ring.inner + ring.outer) / 2;

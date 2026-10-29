@@ -14,7 +14,7 @@ import { DESIGN_HEIGHT, DESIGN_WIDTH } from '../adapt/design';
 import { emptyHand, handCamera, handDown, handUp } from './hand';
 import { INTENT_PAD, chooseIntent, intentWorld, listCandidates } from './intent';
 import { VIEW_H } from './camera';
-import { breakPraise, freshPraise, notePraiseClear, placePraise } from './praise';
+import { breakPraise, clearPoints, freshPraise, notePraiseClear, placePraise } from './praise';
 
 function assert(cond: boolean, message: string): void {
   if (!cond) throw new Error(message);
@@ -921,6 +921,7 @@ nudgeRing(deepClasp, deepBlue, -1, 0.05);
 assert(Math.abs(signedDelta(deepTheta, deepBlue.theta)) < 1e-4, 'a clasp still deep in the band is not finished by the pad');
 
 const praise = freshPraise();
+assert(clearPoints(0) === 100 && clearPoints(1) === 200 && clearPoints(4) === 500, 'a ring scores 100, then 200 through 500');
 assert(notePraiseClear(praise, 1) === 0, 'the first single clear is silent');
 assert(notePraiseClear(praise, 1) === 1, 'the next single clear is Great');
 assert(notePraiseClear(praise, 1) === 2, 'the following single clear is Perfect');

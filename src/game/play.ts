@@ -31,7 +31,7 @@ import { disposeShatter, releaseBar, releaseBuckle, releaseRing, SHATTER, stepSh
 import { LEVELS } from './levels';
 import level1 from '../../public/levels/1.json';
 import { dragEffect, mountFeedback } from './feedback';
-import { breakPraise, freshPraise, notePraiseClear, showPraise, type PraiseCombo } from './praise';
+import { breakPraise, clearPoints, freshPraise, notePraiseClear, showPraise, type PraiseCombo } from './praise';
 import { strikePoint } from './volume';
 import { pulseHaptic } from './hapticFeel';
 import {
@@ -845,7 +845,7 @@ export function mountPlay(options: {
         view.falling = true;
         view.mesh.visible = false;
         if (ring) {
-          scored += 100;
+          scored += 1;
           const chips = releaseRing(root, ring, ring.color ?? colorOf(ring.id));
           if (chips) shatters.push(chips);
         } else if (bar) {
@@ -868,6 +868,7 @@ export function mountPlay(options: {
         const ring = snapshotRings.find((item) => item.id === targetId);
         const bar = snapshotBars.find((item) => item.id === targetId);
         const show = notePraiseClear(praise, left.length);
+        if (scored > 0) scored *= clearPoints(show);
         if (show > 0) {
           if (ring) praiseAt(ring.x, ring.y, show);
           else if (bar) {

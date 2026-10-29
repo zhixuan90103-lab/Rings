@@ -12,7 +12,8 @@
 
 | 职责 | 文件 |
 |------|------|
-| Web 启动 | `index.html` → `src/main.ts` |
+| Web 启动 | `index.html` → `src/main.ts`。手机和真机只走这一页 |
+| 关卡编辑页 | `editor.html` → 同一个 `src/main.ts`。只在电脑上用 |
 | 设计舞台 | `src/adapt/design.ts` |
 | 设备预览 | `src/adapt/devicePreview.ts` |
 | Safe Area | `src/adapt/safeArea.ts` + `src/style.css` |
@@ -26,8 +27,9 @@
 | 音效方案（未实现） | `docs/AUDIO.md` |
 | 画面零件 | `src/game/parts.ts`，规范见 `docs/PARTS.md` |
 | 当前操作 | `src/game/play.ts` 与 `board.ts`。环按切向弧长绕自己的中心转，杆沿长边滑动，银卡扣锁定。按下碰到零件、带动后再撞、抬手解开各震一次。无效晃动不震。过关约 1 秒后由 `main.ts` 弹出 `#result` |
+| 手机设置 | `src/game/phoneSettings.ts`。试玩页右上角齿轮只开震动测试和三档手感 |
 | 关卡编辑 | 电脑页 `editor.html`。菜单在手机框外。试玩页和真机没有编辑。规范见 `docs/ROTATE-RINGS.md` §9 |
-| 规则 | `docs/ROTATE-RINGS.md`。试玩读 `public/levels/1.json` |
+| 规则 | `docs/ROTATE-RINGS.md`。试玩读 `public/levels/`。打包时由 `src/game/packedLevels.ts` 收进程序 |
 
 ## DOM（勿拆）
 
@@ -36,6 +38,8 @@
   canvas          ← WebGPU
   #ui-root        ← 所有游戏 UI（safe padding）
 #device-switcher  ← 仅桌面预览例外
+#editor-desk      ← 仅 editor.html。在手机框外，不跟 390×844 缩放
+#edit-link        ← 仅宽屏试玩页，链到 editor.html
 ```
 
 ## 硬性约定
@@ -44,7 +48,7 @@
 2. **`webDir: dist`** 与 Vite `outDir` 一致  
 3. **`ios.contentInset: never`** — Safe Area 只走 CSS  
 4. **布局坐标 390×844**；禁止 `renderer.setSize(window.innerWidth,…)`  
-5. **UI 只挂 `#ui-root`**；禁止玩法 UI `position: fixed` 贴浏览器窗  
+5. **玩法 UI 只挂 `#ui-root`**。编辑侧栏 `#editor-desk` 和「编辑关卡」链接是仅有的框外例外，不进真机包的操作路径  
 6. **Pad 只改外层视口**，不改 `DESIGN_*`  
 7. **改 Swift 改 `plugins/native-haptics/`** 再 `ios:bootstrap`；震动接线见 `docs/HAPTICS.md`。Capacitor 8 的 `SceneDelegate` 必须 `rootViewController = BridgeViewController()`（默认 `CAPBridgeViewController` 不会注册插件）。不要用 JS `prepare()` 判断是否接上；真机 HUD 看 `plugin: true` + 点「点我震动」。  
 8. **无 WebGPU 则明确失败**，不静默 WebGL  
@@ -68,7 +72,7 @@ npm run ios
 - 零件外形和组合：改 `src/game/parts.ts`，并同步 `docs/PARTS.md`。已定稿的尺寸、倒角、颜色不要跟着操作改  
 - 操作：`src/game/play.ts` 收指针，`src/game/intent.ts` 定拖谁，`src/game/board.ts` 算切向转角和沿长边的位移。银卡扣不进拖动。柄只在 `connectors`，读档丢掉 `catch:` 旧销。体积关按重叠变深退回，销钉关用禁区弧。跟手和意图以 `docs/ROTATE-RINGS.md` §4 为准  
 - 规则：`docs/ROTATE-RINGS.md` 与 `src/game/`。试玩读 `public/levels/`。手写关仍在 `levels.ts`  
-- 编辑：只改 `editor.ts` 和 `levelio.ts`。柄用 `{ angle, stem, target }`。选中后拖十字移动、拖外圈旋转。网格默认开，位置吸 `0.1`，旋转吸 15°。加手柄先点生长位置，再点把手位置。保存只写当前摆法。左右对齐是单独的按钮，规则以 `docs/ROTATE-RINGS.md` §9 为准  
+- 编辑：只改 `editor.ts`、`levelio.ts` 和 `packedLevels.ts`。电脑页 `editor.html`。柄用 `{ angle, stem, target }`。选中后拖十字移动、拖外圈旋转。网格默认开，位置吸 `0.1`，旋转吸 15°。加手柄先点生长位置，再点把手位置。保存只写当前摆法。左右对齐是单独的按钮。手机齿轮不进编辑，规则以 `docs/ROTATE-RINGS.md` §9 为准  
 - 保留：adapt / create-renderer / haptics / plugins / `base`  
 - 触控：`clientToDesign` + 忽略 letterbox 外  
 - 音效：按 `docs/AUDIO.md` 接入；禁止热路径 `new Audio()` / 每发一次桥  

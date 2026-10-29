@@ -16,6 +16,11 @@ final class BridgeViewController: CAPBridgeViewController {
         false
     }
 
+    /// First swipe from an edge stays in the game. A second swipe still goes Home or opens Control Center.
+    override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
+        .all
+    }
+
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
         bridge?.registerPluginInstance(AdvancedHapticsPlugin())

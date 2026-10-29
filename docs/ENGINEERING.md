@@ -26,7 +26,7 @@ portrait-webgpu-base/
 │   │   ├── devicePreview.ts
 │   │   └── safeArea.ts
 │   └── utils/haptics.ts
-├── public/levels/          # 1.json … 5.json。开发时由编辑器写回
+├── public/levels/          # 1.json 起按顺序编号。开发时由编辑器写回。打包时打进程序
 ├── plugins/native-haptics/ # Swift 真源
 └── scripts/bootstrap-ios.mjs
 ```
@@ -151,4 +151,5 @@ npm run cap:sync
 | 2026-10-28 | 柄只写在 `connectors`。读档丢掉 `catch:` 旧销。撞击火花见 ROTATE-RINGS §7 |
 | 2026-10-28 | 跟手吃同一事件里的合并采样。抬手补齐 2%。长条碎块横向散开。碎块按当前画面下沿删除。试玩四种震动 |
 | 2026-10-29 | 试玩改为三种震：按下碰到零件、带动后再撞、抬手解开。夸奖字留在画面内。编辑的对齐和保存分开 |
+| 2026-10-29 | 关卡编辑改到电脑页 `editor.html`。手机齿轮只留震动。关卡 JSON 打进手机包 |
 | 2026-08-31 | 真机震动验通。根因：Capacitor 8 `SceneDelegate` 绕过 storyboard。bootstrap 现会改 SceneDelegate；HUD 用「点我震动」+ `plugin` 标志验收 |

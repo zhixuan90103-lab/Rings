@@ -211,7 +211,7 @@ npm run cap:open
 
 试玩只在 `src/game/play.ts` 里发震，规则见 [ROTATE-RINGS.md](./ROTATE-RINGS.md) §4。不另建 `gameHaptics`，也不在 `main.ts` 里散落调用。都是 `void`，不 `await`。
 
-三次都走 `playTransient`。强度和锐度的默认值在 `src/game/hapticFeel.ts`。齿轮设置里可以改，并立刻试一下。改过的数记在本机 `localStorage`（`rings.haptic-feel`）。无效晃动只留画面，不进这张表。原生侧同一组强度和锐度复用已经做好的短震。引擎被系统停掉后立刻再打开，避免下一次点击赶上启动。
+三次都走 `playTransient`。强度和锐度的默认值在 `src/game/hapticFeel.ts`。试玩页右上角齿轮可以改，滑杆上显示两位小数，并立刻试一下。关卡编辑页没有这颗齿轮。改过的数记在本机 `localStorage`（`rings.haptic-feel`）。无效晃动只留画面，不进这张表。原生侧同一组强度和锐度复用已经做好的短震。引擎被系统停掉后立刻再打开，避免下一次点击赶上启动。
 
 | 画面 | 默认强度 / 锐度 |
 |------|----------------|

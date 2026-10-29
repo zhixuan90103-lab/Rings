@@ -20,6 +20,15 @@ const LINES = [
   { text: 'Amazing', top: '#ee9bff', bottom: '#7a34ee' },
 ] as const;
 
+/** Points for one cleared ring. Index 0 is the silent first clear. */
+const CLEAR_POINTS = [100, 200, 300, 400, 500];
+
+/** Rank 0 is 100. Great 200, Perfect 300, Excellent 400, Amazing 500. */
+export function clearPoints(rank: number): number {
+  const index = Math.max(0, Math.min(CLEAR_POINTS.length - 1, rank));
+  return CLEAR_POINTS[index] ?? 100;
+}
+
 export function freshPraise(): PraiseCombo {
   return { rank: 0, live: false };
 }

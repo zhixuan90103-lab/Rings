@@ -35,7 +35,24 @@ body {
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Callout is not inherited. Cover every touch target, then give fields back. */
+* {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 
 /* Outer letterbox / preview host */
@@ -198,6 +215,7 @@ header {
   color: #4a3b30;
   font-size: 22px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
   text-align: center;
 }

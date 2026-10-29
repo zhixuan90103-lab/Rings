@@ -27,6 +27,22 @@ import { mountPlaySession } from './game/playSession';
 import { mountPhoneSettings } from './game/phoneSettings';
 import { mountResult } from './game/result';
 
+/** Stop WebKit text loupe, callout, double-tap zoom, and rubber-band. Edge Home stays native. */
+function blockWebViewGestures(): void {
+  const editable = (target: EventTarget | null) =>
+    target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+  const stop = (event: Event) => {
+    if (editable(event.target)) return;
+    event.preventDefault();
+  };
+  document.addEventListener('touchmove', stop, { capture: true, passive: false });
+  document.addEventListener('gesturestart', stop, { capture: true });
+  document.addEventListener('selectstart', stop, { capture: true });
+  document.addEventListener('contextmenu', stop, { capture: true });
+}
+
+blockWebViewGestures();
+
 const shell = document.getElementById('shell')!;
 const viewportEl = document.getElementById('viewport')!;
 const stage = document.getElementById('stage')!;
@@ -35,6 +51,8 @@ const levelEl = document.getElementById('hud-level');
 const counterEl = document.getElementById('hud-counter');
 const logEl = document.getElementById('haptic-log');
 let score = 0;
+let shownScore = 0;
+let scoreFrame = 0;
 
 function setStatus(text: string): void {
   if (statusEl) statusEl.textContent = text;
@@ -44,9 +62,26 @@ function setLevel(level: number): void {
   if (levelEl) levelEl.textContent = String(level);
 }
 
-function setScore(count: number): void {
+function setScore(count: number, roll = true): void {
   score = count;
-  if (counterEl) counterEl.textContent = String(score);
+  if (!roll || !counterEl) {
+    cancelAnimationFrame(scoreFrame);
+    shownScore = count;
+    if (counterEl) counterEl.textContent = String(count);
+    return;
+  }
+  const from = shownScore;
+  const to = count;
+  const start = performance.now();
+  cancelAnimationFrame(scoreFrame);
+  const tick = (now: number) => {
+    const t = Math.min(1, (now - start) / 480);
+    const eased = 1 - (1 - t) ** 3;
+    shownScore = Math.round(from + (to - from) * eased);
+    if (counterEl) counterEl.textContent = String(shownScore);
+    if (t < 1) scoreFrame = requestAnimationFrame(tick);
+  };
+  scoreFrame = requestAnimationFrame(tick);
 }
 
 function setLog(text: string): void {
@@ -154,7 +189,7 @@ async function boot(): Promise<void> {
 
   // Optional: document.body.classList.add('debug-safe-area')
 
-  const hud = { setLevel, resetMoves: () => setScore(0) };
+  const hud = { setLevel, resetMoves: () => setScore(0, false) };
   levels = document.body.classList.contains('page-editor')
     ? mountEditor(play, setStatus, hud)
     : mountPlaySession(play, hud);

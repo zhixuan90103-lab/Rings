@@ -500,12 +500,24 @@ export function beginDrag(board: Board, hit: { kind: 'ring'; id: string } | { ki
   return { kind: 'bar', id: bar.id, t: bar.t, x, y };
 }
 
-/** Tangential arc at the ring band. Motion inside the hole uses the band radius as the lever. */
-function tangentialStep(cx: number, cy: number, x0: number, y0: number, x1: number, y1: number, lever: number): number {
+/**
+ * Bearing change on and outside the band. Inside the hole, arc length is geared to the band radius.
+ * Above or below the center, vertical travel turns at rim speed and follows the finger.
+ */
+export function tangentialStep(cx: number, cy: number, x0: number, y0: number, x1: number, y1: number, lever: number): number {
   const rx = x0 - cx;
   const ry = y0 - cy;
-  const lever2 = Math.max(rx * rx + ry * ry, lever * lever);
-  return (rx * (y1 - y0) - ry * (x1 - x0)) / lever2;
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const r = Math.hypot(rx, ry);
+  if (r < 1e-6) return 0;
+  const geared = (rx * dy - ry * dx) / (r * Math.max(r, lever));
+  const mx = (x0 + x1) * 0.5 - cx;
+  const my = (y0 + y1) * 0.5 - cy;
+  const mid = Math.hypot(mx, my);
+  if (mid >= lever || Math.abs(my) < Math.abs(mx) || Math.abs(mx) < 1e-6) return geared;
+  const vertical = (rx * dy) / (r * lever);
+  return geared - vertical + (Math.sign(mx) * dy) / lever;
 }
 
 /** Moves the piece. Returns the signed step collision did not apply. */

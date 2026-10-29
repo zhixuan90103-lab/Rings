@@ -17,6 +17,7 @@ import {
   beginDrag,
   cancelDrag,
   dragTo,
+  tangentialStep,
   moveBar,
   nudgeRing,
   ringById,
@@ -553,10 +554,7 @@ export function mountPlay(options: {
       const ring = ringById(board, drag.id);
       if (ring) {
         const lever = (ring.inner + ring.outer) / 2;
-        const rx = drag.x - ring.x;
-        const ry = drag.y - ring.y;
-        const lever2 = Math.max(rx * rx + ry * ry, lever * lever);
-        noteSlide((rx * (world.y - drag.y) - ry * (world.x - drag.x)) / lever2);
+        noteSlide(tangentialStep(ring.x, ring.y, drag.x, drag.y, world.x, world.y, lever));
       }
     }
     const rejected = dragTo(board, drag, world.x, world.y);
@@ -765,10 +763,7 @@ export function mountPlay(options: {
         const latched = feedback.holdSign(drag.id);
         if (ring && latched !== 0) {
           const lever = Math.max((ring.inner + ring.outer) / 2, 1e-4);
-          const rx = drag.x - ring.x;
-          const ry = drag.y - ring.y;
-          const lever2 = Math.max(rx * rx + ry * ry, lever * lever);
-          const requested = (rx * (world.y - drag.y) - ry * (world.x - drag.x)) / lever2;
+          const requested = tangentialStep(ring.x, ring.y, drag.x, drag.y, world.x, world.y, lever);
           const back = intentWorld(INTENT_WINDOW, camera.zoom) / lever;
           if (Math.sign(requested) === Math.sign(latched) || Math.abs(requested) < back) continue;
         }

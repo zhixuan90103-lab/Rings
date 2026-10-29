@@ -275,7 +275,7 @@
 | `src/game/intent.ts` | 五档分数，见 §4。比例是设计短边的 10%、1%、2%、2%。后一个 2% 是抬手补齐，前一个是短窗口 |
 | `src/game/play.ts` | 正交画面、指针捕获、把意图交给 `dragTo`、过关计时、三种震动。银卡扣试玩时不可拖。计时结束调用 `onCleared`，不自己换关 |
 | `src/game/result.ts` | 结算层。重玩和下一关由外面传入 |
-| `src/game/praise.ts` | 连击阶、夸奖字和落点。整句留在 390×844 内，上方放不下就改到目标下方 |
+| `src/game/praise.ts` | 连击阶、夸奖字、落点和每只环的分数。`clearPoints`：无字 100，Great 200，Perfect 300，Excellent 400，Amazing 500。整句留在 390×844 内，上方放不下就改到目标下方 |
 | `src/game/feedback.ts` | 无效晃动和撞击发亮。粒子只在这一下已经带动过零件时出现。不写回规则姿态 |
 | `src/game/sparks.ts` | 9 颗圆片，颜色用正在拖的那一件自己的 `color`。一组共用一份材质，播完放回对象池 |
 | `src/game/shatter.ts` | 解锁碎裂。`SHATTER` 是边长、间距、初速、长条横向散开、预散开、重力和缩小。网格进对象池。删掉高度由 `play.ts` 按当前画面下沿传入 |

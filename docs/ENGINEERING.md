@@ -84,6 +84,23 @@ renderer.setSize(390, 844)          // 始终设计分辨率
 
 3D 可全出血；可点 UI 只在 `#ui-root`。
 
+## 5b. 系统手势
+
+玩法拖动和系统手势分两层。网页能停的停在网页里。屏幕边缘和 WebView 回弹在 `BridgeViewController`。
+
+网页，`src/style.css` 与 `src/main.ts` 的 `blockWebViewGestures`：
+
+- `*` 写 `-webkit-touch-callout: none`、`user-select: none`、`-webkit-user-drag: none`。这个 callout 不继承，只写在 `html` 上挡不住子元素。`input` 和 `textarea` 恢复可选。
+- 非输入框拦截 `touchmove`、`gesturestart`、`selectstart`、`contextmenu`。`touchmove` 必须 `passive: false`。
+- 不拦截 `touchstart`。齿轮和按钮的点击还在。
+- 这样停掉选字放大镜、长按复制菜单、双击和双指的系统缩放。三指撤销跟着选字一起消失。
+
+原生，真源 `plugins/native-haptics/BridgeViewController.swift`。改完 `ios:bootstrap`，再重新编译安装。只刷新网页看不到：
+
+- `preferredScreenEdgesDeferringSystemGestures = .all`。上、下、左、右第一次滑动留给游戏。再滑一次才是 Home、通知中心、控制中心或返回。Home 不能永久关掉。
+- `lockWebScroll` 在出现和每次布局后执行：`bounces`、纵向和横向回弹、滚动都关掉，内容边距归零。`capacitor.config.ts` 的 `ios.scrollEnabled: false` 关不掉回弹。画面中间向下拖出空白，就是这一层。
+- 便捷访问不在这套接口里。底边向下滑，系统把整个 App 连状态栏降到下半屏，上方留黑，中间有向上的箭头。没有公开接口可关。真机要关时走：设置 → 辅助功能 → 触控 → 便捷访问。
+
 ## 6. WebGPU
 
 - `createRenderer` → `three/webgpu` WebGPURenderer  
@@ -140,6 +157,7 @@ npm run cap:sync
 5. `dist` / `ios/.../public` 是产物  
 6. 真机安装前改 `capacitor.config.ts` 的 `appId`，避免覆盖别的 App  
 7. 震动没接上：先看 [HAPTICS.md §0](./HAPTICS.md)。常见断点是 SceneDelegate 仍是默认 VC，不是 storyboard 没改。不要只 `cap:sync`，不要用 `prepare()` 当验收  
+8. 真机向下拖仍出空白或半屏：先分清两件事。整页跟着手指露出空白，是 WebView 回弹，看 `lockWebScroll` 有没有进当前安装包。整页连状态栏掉到下半屏、上方全黑，是便捷访问，App 关不掉，见 §5b  
 
 ## 10. 变更
 
@@ -152,4 +170,6 @@ npm run cap:sync
 | 2026-10-28 | 跟手吃同一事件里的合并采样。抬手补齐 2%。长条碎块横向散开。碎块按当前画面下沿删除。试玩四种震动 |
 | 2026-10-29 | 试玩改为三种震：按下碰到零件、带动后再撞、抬手解开。夸奖字留在画面内。编辑的对齐和保存分开 |
 | 2026-10-29 | 关卡编辑改到电脑页 `editor.html`。手机齿轮只留震动。关卡 JSON 打进手机包 |
+| 2026-10-29 | 消环按夸奖加分：无字 100，Great 200，Perfect 300，Excellent 400，Amazing 500。顶栏约 480 毫秒滚到新分数 |
+| 2026-10-29 | 系统手势：网页禁放大镜和系统缩放；原生推迟四边手势并锁死 WebView 回弹。便捷访问不在 App 接口里。见 §5b |
 | 2026-08-31 | 真机震动验通。根因：Capacitor 8 `SceneDelegate` 绕过 storyboard。bootstrap 现会改 SceneDelegate；HUD 用「点我震动」+ `plugin` 标志验收 |

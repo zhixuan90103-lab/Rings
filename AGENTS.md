@@ -52,6 +52,7 @@
 6. **Pad 只改外层视口**，不改 `DESIGN_*`  
 7. **改 Swift 改 `plugins/native-haptics/`** 再 `ios:bootstrap`；震动接线见 `docs/HAPTICS.md`。Capacitor 8 的 `SceneDelegate` 必须 `rootViewController = BridgeViewController()`（默认 `CAPBridgeViewController` 不会注册插件）。不要用 JS `prepare()` 判断是否接上；真机 HUD 看 `plugin: true` + 点「点我震动」。  
 8. **无 WebGPU 则明确失败**，不静默 WebGL  
+9. **系统手势按 [docs/ENGINEERING.md](docs/ENGINEERING.md) §5b**。网页禁选字放大镜、长按菜单和系统缩放，不拦 `touchstart`。四边推迟和 WebView 回弹在 `BridgeViewController`，改 Swift 后要重编。便捷访问（底边向下把整页降到下半屏）没有公开接口，不能在 App 里关  
 
 ## 命令
 

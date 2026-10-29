@@ -45,7 +45,7 @@ npm run cap:open
 # Xcode: Team → 真机 → Run
 ```
 
-日常只改网页：`npm run cap:sync`。改 Swift / 第一次：`ios:bootstrap`（会改 SceneDelegate，否则真机 `plugin: false`）。
+日常只改网页：`npm run cap:sync`。改 Swift / 第一次：`ios:bootstrap`（会改 SceneDelegate，否则真机 `plugin: false`）。系统手势和 WebView 回弹也在这份 Swift 里，改完要重新编译安装，见 [docs/ENGINEERING.md](./docs/ENGINEERING.md) §5b。便捷访问在系统设置里关，App 没有接口。
 
 装真机前改 `capacitor.config.ts` 的 `appId`，避免和已装 App 冲突。验收看 HUD `plugin: true` 再点 **点我震动**。
 

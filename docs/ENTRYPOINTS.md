@@ -52,6 +52,7 @@ ios:bootstrap
 Xcode Run 真机
   → SceneDelegate 创建 BridgeViewController
   → capacitorDidLoad → registerPluginInstance(AdvancedHapticsPlugin)
+  → 推迟四边系统手势，并锁死 WebView 回弹（见 ENGINEERING §5b）
   → load App/public (= dist)
   → 同上 Web 链
   → HUD「点我震动」→ haptics.impact('medium')
@@ -67,6 +68,7 @@ HUD 状态行有 `plugin: true/false`。`false` = 仍在默认 `CAPBridgeViewCon
 | appId | `capacitor.config.ts` |
 | 设计分辨率 | `design.ts` + `style.css` |
 | 震动原生 | `plugins/native-haptics/*.swift` + bootstrap |
+| 系统手势 | 网页：`style.css`、`main.ts`。原生回弹和四边推迟：`BridgeViewController.swift`。规范见 [ENGINEERING.md](./ENGINEERING.md) §5b |
 | 启动 HUD | `index.html` + `main.ts` |
 | 关卡编辑 | 电脑页 `editor.html`。`src/game/editor.ts`、`src/game/levelio.ts`、`public/levels/`。保存只在 `npm run dev` |
 | 手机设置 | `src/game/phoneSettings.ts`。试玩页齿轮。震动测试和三档手感，数值写在滑杆上 |

@@ -388,7 +388,7 @@ export function mountEditor(
     title.className = 'panel-title';
     title.textContent = '震动';
     box.append(title);
-    const kinds: HapticKind[] = ['grab', 'hit', 'invalid', 'clear'];
+    const kinds: HapticKind[] = ['grab', 'hit', 'clear'];
     for (const kind of kinds) box.append(hapticRow(kind));
     const reset = button('恢复默认', () => {
       resetHapticFeel();
@@ -410,7 +410,10 @@ export function mountEditor(
     const sharpness = tuneSlider('锐度', feel.sharpness, (value) => {
       setHapticPair(kind, { intensity: hapticFeel()[kind].intensity, sharpness: value });
     });
-    row.append(name, intensity, sharpness, button('试', () => pulseHaptic(kind)));
+    const head = document.createElement('div');
+    head.className = 'haptic-head';
+    head.append(name, button('试', () => pulseHaptic(kind)));
+    row.append(head, intensity, sharpness);
     return row;
   }
 
@@ -524,15 +527,24 @@ export function mountEditor(
   ): HTMLLabelElement {
     const node = document.createElement('label');
     node.className = 'editor-slider';
-    node.textContent = name;
+    const caption = document.createElement('span');
+    const places = step >= 1 ? 0 : step >= 0.1 ? 1 : 2;
+    const show = (next: number) => {
+      caption.textContent = `${name} ${next.toFixed(places)}`;
+    };
+    show(value);
     const input = document.createElement('input');
     input.type = 'range';
     input.min = String(min);
     input.max = String(max);
     input.step = String(step);
     input.value = String(value);
-    input.addEventListener('input', () => onInput(Number(input.value)));
-    node.append(input);
+    input.addEventListener('input', () => {
+      const next = Number(input.value);
+      show(next);
+      onInput(next);
+    });
+    node.append(caption, input);
     return node;
   }
 

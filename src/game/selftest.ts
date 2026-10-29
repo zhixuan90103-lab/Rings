@@ -14,7 +14,7 @@ import { DESIGN_HEIGHT, DESIGN_WIDTH } from '../adapt/design';
 import { emptyHand, handCamera, handDown, handUp } from './hand';
 import { INTENT_PAD, chooseIntent, intentWorld, listCandidates } from './intent';
 import { VIEW_H } from './camera';
-import { breakPraise, freshPraise, notePraiseClear } from './praise';
+import { breakPraise, freshPraise, notePraiseClear, placePraise } from './praise';
 
 function assert(cond: boolean, message: string): void {
   if (!cond) throw new Error(message);
@@ -879,5 +879,13 @@ breakPraise(praise);
 assert(notePraiseClear(praise, 1) === 0, 'a fault makes the next clear a first clear');
 const multi = freshPraise();
 assert(notePraiseClear(multi, 2) === 2, 'a first multi clear is Perfect');
+const praiseMid = placePraise(195, 420, 'Great!');
+assert(!praiseMid.below && praiseMid.y === 420 - 56, 'a clear in the middle stays above the piece');
+const praiseHigh = placePraise(195, 30, 'Great!');
+assert(praiseHigh.below && praiseHigh.y > 30, 'a clear near the top puts the word below the piece');
+const praiseLeft = placePraise(8, 420, 'Excellent!');
+assert(praiseLeft.x > 8, 'a clear on the left edge slides the word inward');
+const praiseRight = placePraise(382, 420, 'Excellent!');
+assert(praiseRight.x < 382, 'a clear on the right edge slides the word inward');
 
 console.log('rotate-rings selftest ok');

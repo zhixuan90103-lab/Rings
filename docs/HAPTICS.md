@@ -159,7 +159,7 @@ void haptics.stopContinuous();
 ## 2. 一次接对：五条硬约定
 
 1. **改 Swift 只改** `plugins/native-haptics/`，然后 **`npm run ios:bootstrap`**。不要只改 `ios/App/App/` 里的副本。
-2. **玩法禁止** `registerPlugin('AdvancedHaptics')` 和 `navigator.vibrate`。只走 `src/utils/haptics.ts`。试玩的四次调用在 `src/game/play.ts`。
+2. **玩法禁止** `registerPlugin('AdvancedHaptics')` 和 `navigator.vibrate`。只走 `src/utils/haptics.ts`。试玩的三次调用在 `src/game/play.ts`。
 3. **不要依赖 JS `prepare()` 当初始化。** 原生 `load()` 已 `initEngine()`。回前台最多再点一次轻 `impact('soft')` 预热 UIKit，不是必须。
 4. **先确认插件已注册，再谈手感。** 真机状态应看到 `haptics ios: true`，且 `isPluginAvailable('AdvancedHaptics') === true`。
 5. **节奏在游戏层。** 插件只负责「震一下」。cooldown、具名 pattern、开关，仿音效 Catalog，不要塞进 Swift。
@@ -211,14 +211,13 @@ npm run cap:open
 
 试玩只在 `src/game/play.ts` 里发震，规则见 [ROTATE-RINGS.md](./ROTATE-RINGS.md) §4。不另建 `gameHaptics`，也不在 `main.ts` 里散落调用。都是 `void`，不 `await`。
 
-四下都走 `playTransient`。强度和锐度的默认值在 `src/game/hapticFeel.ts`。齿轮设置里可以改，并立刻试一下。改过的数记在本机 `localStorage`（`rings.haptic-feel`）。
+三次都走 `playTransient`。强度和锐度的默认值在 `src/game/hapticFeel.ts`。齿轮设置里可以改，并立刻试一下。改过的数记在本机 `localStorage`（`rings.haptic-feel`）。无效晃动只留画面，不进这张表。
 
 | 画面 | 默认强度 / 锐度 |
 |------|----------------|
-| 按住并锁定一件 | 0.32 / 0.25 |
-| 已经带动过、溅出火花 | 0.72 / 0.82。再亮的间隔跟火花：环约 0.08 弧度，杆 0.03 |
-| 无效晃动（没带动的发亮，或松手的点击晃动） | 0.45 / 0.30。同一次拖动只一次 |
-| 一次抬手解开至少一件 | 0.90 / 0.55。一次松手一次，不按件数连震 |
+| 点到一件并锁定 | 0.40 / 0.49 |
+| 已经带动过、再撞上并溅出火花 | 0.42 / 1.00。再亮的间隔跟火花：环约 0.08 弧度，杆 0.03 |
+| 一次抬手解开至少一件 | 0.55 / 0.45。一次松手一次，不按件数连震 |
 
 再加震时仍只走 `src/utils/haptics.ts`：
 

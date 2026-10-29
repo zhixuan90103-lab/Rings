@@ -143,10 +143,9 @@ export function mountPlay(options: {
   getLayout: () => StageLayout | null;
   onStatus: (text: string) => void;
   onScore?: (points: number) => void;
-  onRelease: () => void;
   onCleared?: () => void;
 }): PlayHandles {
-  const { scene, camera, canvas, onStatus, onScore, onRelease, onCleared } = options;
+  const { scene, camera, canvas, onStatus, onScore, onCleared } = options;
   const root = new THREE.Group();
   scene.add(root);
 
@@ -156,7 +155,6 @@ export function mountPlay(options: {
   let views: PieceView[] = [];
   let markers: THREE.Object3D[] = [];
   let shatters: Shatter[] = [];
-  let feltInvalid = false;
   let drag: Drag | null = null;
   let dragMoved = false;
   let nudgeSign = 0;
@@ -383,13 +381,6 @@ export function mountPlay(options: {
     const color = ring?.color ?? bar?.color ?? colorOf(id);
     feedback.impact(view.mesh, sparks ? strikePoint(board, kind, id, sign) : null, color);
     if (sparks) pulseHaptic('hit');
-    else feelInvalid();
-  }
-
-  function feelInvalid(): void {
-    if (feltInvalid) return;
-    feltInvalid = true;
-    pulseHaptic('invalid');
   }
 
   function worldFromEvent(event: PointerEvent, clampToDesign: boolean): { x: number; y: number } | null {
@@ -482,7 +473,6 @@ export function mountPlay(options: {
     pending = null;
     if (!next) return;
     drag = next;
-    feltInvalid = false;
     pulseHaptic('grab');
     nudgeSign = 0;
     nudgeBroken = false;
@@ -769,10 +759,7 @@ export function mountPlay(options: {
         }
       }
       if (scored > 0) onScore?.(scored);
-      if (left.length > 0) {
-        pulseHaptic('clear');
-        onRelease();
-      }
+      if (left.length > 0) pulseHaptic('clear');
       if (board.rings.length === 0 && board.bars.length === 0) awaitingNext = true;
     }
     drag = null;
@@ -789,7 +776,6 @@ export function mountPlay(options: {
       const bar = barById(board, clicked.id);
       const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
       feedback.click(clicked.id, clicked.kind, length);
-      feelInvalid();
     } else feedback.clearPose();
     syncMeshes();
   }

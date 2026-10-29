@@ -25,7 +25,7 @@
 | iOS 注入 | `scripts/bootstrap-ios.mjs` |
 | 音效方案（未实现） | `docs/AUDIO.md` |
 | 画面零件 | `src/game/parts.ts`，规范见 `docs/PARTS.md` |
-| 当前操作 | `src/game/play.ts` 与 `board.ts`。环按切向弧长绕自己的中心转，杆沿长边滑动，银卡扣锁定。按住、撞击、无效晃动、消除各震一次。过关约 1 秒后由 `main.ts` 弹出 `#result` |
+| 当前操作 | `src/game/play.ts` 与 `board.ts`。环按切向弧长绕自己的中心转，杆沿长边滑动，银卡扣锁定。点到锁定、带动后再撞、抬手解开各震一次。无效晃动不震。过关约 1 秒后由 `main.ts` 弹出 `#result` |
 | 关卡编辑 | `src/game/editor.ts`、`levelio.ts`。设置里打开关卡模式才出现。规范见 `docs/ROTATE-RINGS.md` §9 |
 | 规则 | `docs/ROTATE-RINGS.md`。试玩读 `public/levels/1.json` |
 

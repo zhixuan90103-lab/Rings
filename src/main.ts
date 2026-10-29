@@ -114,11 +114,6 @@ async function boot(): Promise<void> {
     getLayout: () => latestLayout,
     onStatus: () => {},
     onScore: (points) => setScore(score + points),
-    onRelease: () => {
-      if (haptics.isNativeIos() && haptics.isPluginAvailable()) {
-        void haptics.impact('light');
-      }
-    },
     onCleared: () => result.show(),
   });
   let preview: DevicePreviewController;

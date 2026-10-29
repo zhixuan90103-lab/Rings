@@ -473,7 +473,6 @@ export function mountPlay(options: {
     pending = null;
     if (!next) return;
     drag = next;
-    pulseHaptic('grab');
     nudgeSign = 0;
     nudgeBroken = false;
     dragMoved = false;
@@ -581,6 +580,7 @@ export function mountPlay(options: {
     const ray = pickByRay(world);
     const hits = listCandidates(board, world.x, world.y, intentWorld(INTENT_PAD, camera.zoom), ray ? [ray.id] : []);
     if (hits.length === 0) return;
+    pulseHaptic('grab');
     pending = { hits, x0: world.x, y0: world.y, dx: point.dx, dy: point.dy, samples: [{ x: world.x, y: world.y }] };
     pointerId = event.pointerId;
     lastStamp = event.timeStamp;

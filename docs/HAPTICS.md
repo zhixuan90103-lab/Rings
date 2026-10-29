@@ -211,11 +211,11 @@ npm run cap:open
 
 试玩只在 `src/game/play.ts` 里发震，规则见 [ROTATE-RINGS.md](./ROTATE-RINGS.md) §4。不另建 `gameHaptics`，也不在 `main.ts` 里散落调用。都是 `void`，不 `await`。
 
-三次都走 `playTransient`。强度和锐度的默认值在 `src/game/hapticFeel.ts`。齿轮设置里可以改，并立刻试一下。改过的数记在本机 `localStorage`（`rings.haptic-feel`）。无效晃动只留画面，不进这张表。
+三次都走 `playTransient`。强度和锐度的默认值在 `src/game/hapticFeel.ts`。齿轮设置里可以改，并立刻试一下。改过的数记在本机 `localStorage`（`rings.haptic-feel`）。无效晃动只留画面，不进这张表。原生侧同一组强度和锐度复用已经做好的短震。引擎被系统停掉后立刻再打开，避免下一次点击赶上启动。
 
 | 画面 | 默认强度 / 锐度 |
 |------|----------------|
-| 点到一件并锁定 | 0.40 / 0.49 |
+| 按下时已经碰到零件，不等方向分出来 | 0.40 / 0.49 |
 | 已经带动过、再撞上并溅出火花 | 0.42 / 1.00。再亮的间隔跟火花：环约 0.08 弧度，杆 0.03 |
 | 一次抬手解开至少一件 | 0.55 / 0.45。一次松手一次，不按件数连震 |
 

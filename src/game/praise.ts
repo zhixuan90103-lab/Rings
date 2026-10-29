@@ -53,16 +53,22 @@ const PRAISE_LIFT = 56;
 const PRAISE_RISE = 28;
 const PRAISE_DRIFT = 4;
 const PRAISE_EDGE = 8;
-const WORD_SCALE = 0.605;
-const WORD_HEIGHT = 50.82;
 const WORD_POP = 1.08;
+const WORD_SHADOW = 4;
+
+type WordLayout = { viewW: number; viewH: number; drawW: number; drawH: number };
+
+/** The SVG view box and the size it is drawn at. Placement uses the same box. */
+function wordLayout(text: string): WordLayout {
+  const viewW = text.length * 30 + 36;
+  const viewH = 84;
+  return { viewW, viewH, drawW: viewW * 0.605, drawH: 50.82 };
+}
 
 /** Laid-out size at the biggest moment of the pop, plus the drop shadow. */
 export function praiseSize(text: string): { w: number; h: number } {
-  return {
-    w: (text.length * 30 + 36) * WORD_SCALE * WORD_POP,
-    h: WORD_HEIGHT * WORD_POP + 4,
-  };
+  const word = wordLayout(text);
+  return { w: word.drawW * WORD_POP, h: word.drawH * WORD_POP + WORD_SHADOW };
 }
 
 /**
@@ -94,13 +100,13 @@ export function showPraise(x: number, y: number, rank: number): void {
   const id = `praise-fill-${serial}`;
   serial += 1;
   const spot = placePraise(x, y, line.text);
+  const word = wordLayout(line.text);
 
   const node = document.createElement('div');
   node.className = spot.below ? 'praise is-below' : 'praise';
   node.style.left = `${spot.x}px`;
   node.style.top = `${spot.y}px`;
-  const width = line.text.length * 30 + 36;
-  node.innerHTML = `<svg viewBox="0 0 ${width} 84" width="${width * 0.605}" height="50.82" aria-hidden="true">
+  node.innerHTML = `<svg viewBox="0 0 ${word.viewW} ${word.viewH}" width="${word.drawW}" height="${word.drawH}" aria-hidden="true">
     <defs>
       <linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="${line.top}"/>
@@ -108,7 +114,7 @@ export function showPraise(x: number, y: number, rank: number): void {
         <stop offset="100%" stop-color="${line.bottom}"/>
       </linearGradient>
     </defs>
-    <text x="${width / 2}" y="62" text-anchor="middle"
+    <text x="${word.viewW / 2}" y="62" text-anchor="middle"
       fill="url(#${id})" stroke="#ffffff" stroke-width="13" stroke-linejoin="round" paint-order="stroke">${line.text}</text>
   </svg>`;
   host.append(node);

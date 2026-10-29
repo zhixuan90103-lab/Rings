@@ -19,6 +19,9 @@ public class AdvancedHapticsPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private var engine: CHHapticEngine?
     private var continuousPlayer: CHHapticAdvancedPatternPlayer?
+    private var transientPlayer: CHHapticPatternPlayer?
+    private var transientIntensity: Float = -1
+    private var transientSharpness: Float = -1
     private var isEngineRunning = false
 
     override public func load() {
@@ -35,10 +38,13 @@ public class AdvancedHapticsPlugin: CAPPlugin, CAPBridgedPlugin {
             engine?.isAutoShutdownEnabled = false
             engine?.resetHandler = { [weak self] in
                 self?.isEngineRunning = false
+                self?.transientPlayer = nil
                 self?.startEngineIfNeededQuietly()
             }
             engine?.stoppedHandler = { [weak self] _ in
                 self?.isEngineRunning = false
+                self?.transientPlayer = nil
+                self?.startEngineIfNeededQuietly()
             }
             startEngineIfNeededQuietly()
         } catch {
@@ -133,17 +139,21 @@ public class AdvancedHapticsPlugin: CAPPlugin, CAPBridgedPlugin {
         guard let engine = engine else {
             throw NSError(domain: "AdvancedHaptics", code: -1, userInfo: [NSLocalizedDescriptionKey: "Engine not initialized"])
         }
-        let event = CHHapticEvent(
-            eventType: .hapticTransient,
-            parameters: [
-                CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity),
-                CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
-            ],
-            relativeTime: 0
-        )
-        let pattern = try CHHapticPattern(events: [event], parameters: [])
-        let player = try engine.makePlayer(with: pattern)
-        try player.start(atTime: CHHapticTimeImmediate)
+        if transientPlayer == nil || transientIntensity != intensity || transientSharpness != sharpness {
+            let event = CHHapticEvent(
+                eventType: .hapticTransient,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
+                ],
+                relativeTime: 0
+            )
+            let pattern = try CHHapticPattern(events: [event], parameters: [])
+            transientPlayer = try engine.makePlayer(with: pattern)
+            transientIntensity = intensity
+            transientSharpness = sharpness
+        }
+        try transientPlayer?.start(atTime: CHHapticTimeImmediate)
     }
 
     @objc func playPattern(_ call: CAPPluginCall) {

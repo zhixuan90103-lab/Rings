@@ -110,7 +110,7 @@ SceneDelegate.rootViewController = BridgeViewController()
 只改 storyboard **不够**：Capacitor 8 用 SceneDelegate 直接 `CAPBridgeViewController()`，会绕过 storyboard，HUD 出现 `plugin: false`，按钮无震。
 
 Swift **没有** `prepare`；引擎在 `load()` 启动。UIKit 反馈在主线程触发。验收用 HUD **点我震动**（`impact`）和状态行 `plugin: true`。  
-试玩三种震写在 `src/game/play.ts`：点到锁定、带动后再撞、抬手解开。时机见 [ROTATE-RINGS.md](./ROTATE-RINGS.md) §4。不要改插件除非新增原生方法。
+试玩三种震写在 `src/game/play.ts`：按下碰到零件、带动后再撞、抬手解开。时机见 [ROTATE-RINGS.md](./ROTATE-RINGS.md) §4。短震播放器的复用在 `plugins/native-haptics/`，改完要 `ios:bootstrap`。
 
 ## 7b. Audio（尚未实现）
 

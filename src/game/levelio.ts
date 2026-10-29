@@ -153,6 +153,43 @@ function stemForDistance(owner: RingBody, distance: number): number {
   return Math.max(0.02, distance - bend - owner.outer + band * 0.2);
 }
 
+/**
+ * Angle and stem that put the visible clasp on this world point.
+ * The drawn clasp sits at `claspDist`. The arc center used by alignment is one bend farther out.
+ * Angle 0 is +X, counterclockwise.
+ */
+export function connectorAtHandle(
+  owner: RingBody,
+  claspX: number,
+  claspY: number,
+): { angle: number; stem: number } | null {
+  const dx = claspX - owner.x;
+  const dy = claspY - owner.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 1e-4) return null;
+  const band = owner.outer * PART.bandRatio;
+  return {
+    angle: wrapAngle(Math.atan2(dy, dx) - owner.theta),
+    stem: Math.max(0.02, distance - owner.outer + band * 0.2),
+  };
+}
+
+/** Angle and stem that put the clasp's arc center on this world point. Angle 0 is +X, counterclockwise. */
+export function connectorAtClasp(
+  owner: RingBody,
+  claspX: number,
+  claspY: number,
+): { angle: number; stem: number } | null {
+  const dx = claspX - owner.x;
+  const dy = claspY - owner.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 1e-4) return null;
+  return {
+    angle: wrapAngle(Math.atan2(dy, dx) - owner.theta),
+    stem: stemForDistance(owner, distance),
+  };
+}
+
 /** Rings farther out than this share one x on their side. */
 const SIDE_COLUMN = 1;
 
@@ -190,6 +227,30 @@ function aimConnectors(board: Board): void {
       const target = board.rings.find((ring) => ring.id === connector.target);
       if (!target || target.id === owner.id) continue;
       aimConnector(owner, connector, target);
+    }
+  }
+}
+
+/**
+ * Keep bound handles seated while one ring moves.
+ * Handles on this ring stay aimed at their targets.
+ * Handles on other rings that lock this ring stay aimed at it.
+ * A farther ring gets a longer stem. Unbound handles are left alone.
+ */
+export function followLockedHandles(board: Board, movedId: string): void {
+  const moved = board.rings.find((ring) => ring.id === movedId);
+  if (!moved) return;
+  for (const connector of moved.connectors) {
+    if (!connector.target) continue;
+    const target = board.rings.find((ring) => ring.id === connector.target);
+    if (!target || target.id === moved.id) continue;
+    aimConnector(moved, connector, target);
+  }
+  for (const other of board.rings) {
+    if (other.id === movedId) continue;
+    for (const connector of other.connectors) {
+      if (connector.target !== movedId) continue;
+      aimConnector(other, connector, moved);
     }
   }
 }
@@ -233,6 +294,29 @@ export function centerBoard(board: Board): void {
     latch.y -= dy;
   }
   syncPins(board);
+}
+
+/** How many `public/levels/N.json` files answer, in order from 1. */
+export async function fetchLevelCount(): Promise<number> {
+  let count = 0;
+  for (let n = 1; n <= 99; n += 1) {
+    const response = await fetch(`./levels/${n}.json`);
+    if (!response.ok) break;
+    count = n;
+  }
+  return Math.max(count, 1);
+}
+
+export async function createLevel(): Promise<number> {
+  const response = await fetch('./__levels', { method: 'POST' });
+  if (!response.ok) throw new Error(await response.text());
+  const data = (await response.json()) as { index: number };
+  return data.index;
+}
+
+export async function deleteLevel(index: number): Promise<void> {
+  const response = await fetch(`./__levels/${index}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error(await response.text());
 }
 
 export async function saveLevel(index: number, board: Board): Promise<void> {

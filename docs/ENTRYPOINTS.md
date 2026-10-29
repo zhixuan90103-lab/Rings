@@ -19,7 +19,7 @@ index.html
        → applyNativeClass / safeArea
        → createRenderer(#stage)
        → mountPlay（切向转环、沿长边滑杆，银卡扣锁定）
-       → mountEditor（默认试玩 `public/levels/1.json`；设置里打开关卡模式才编辑）
+       → 试玩页 mountPlaySession；编辑页 editor.html 才 mountEditor
        → mountDevicePreview → computeStageLayout → applyStageTransform
        → watchStageLayout
        → haptics + HUD buttons
@@ -68,7 +68,7 @@ HUD 状态行有 `plugin: true/false`。`false` = 仍在默认 `CAPBridgeViewCon
 | 设计分辨率 | `design.ts` + `style.css` |
 | 震动原生 | `plugins/native-haptics/*.swift` + bootstrap |
 | 启动 HUD | `index.html` + `main.ts` |
-| 关卡编辑 | `src/game/editor.ts`、`src/game/levelio.ts`、`public/levels/`。保存只在 `npm run dev` |
+| 关卡编辑 | 电脑页 `editor.html`。`src/game/editor.ts`、`src/game/levelio.ts`、`public/levels/`。保存只在 `npm run dev` |
 | 过关结算 | `play.ts` 计时后 `onCleared`；`result.ts` 弹出 `#result`。重玩再开当前关，下一关向后，第 5 关回到第 1 关 |
 | 编辑镜头 | `camera.ts` 的 `editorFrame`。编辑栏「镜头」「上下」两条滑杆 |
 | 音效（规划） | [AUDIO.md](./AUDIO.md) |

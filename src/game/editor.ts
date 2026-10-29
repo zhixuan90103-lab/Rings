@@ -3,13 +3,16 @@ import { hapticFeel, hapticLabel, pulseHaptic, resetHapticFeel, setHapticPair, t
 import type { BarBody, Board, RingBody } from './board';
 import { syncPins } from './board';
 import { wrapAngle } from './angle';
-import { PART } from './parts';
+import { PART, connectorLayout } from './parts';
 import {
-  LEVEL_COUNT,
   PALETTE,
   colorsClash,
-  defaultStem,
+  connectorAtHandle,
+  followLockedHandles,
+  createLevel,
+  deleteLevel,
   emptyBoard,
+  fetchLevelCount,
   freshColor,
   loadLevel,
   makeRing,
@@ -18,7 +21,11 @@ import {
   stripHandlePins,
 } from './levelio';
 
-type Tool = 'move' | 'turn';
+const GRID = 0.1;
+const TURN_STEP = Math.PI / 12;
+const AXIS_HIT = 0.13;
+const CENTER_GAP = 0.16;
+const TURN_HIT = 0.12;
 
 type Selection =
   | { kind: 'ring'; id: string; connector: number | null }
@@ -42,14 +49,22 @@ export function mountEditor(
   if (!levelHost || !editorPanel) return { advance: () => {}, replay: () => {} };
 
   let level = 1;
-  let tool: Tool = 'move';
-  let levelMode = false;
+  let count = 1;
+  let gridOn = true;
   let settingsOpen = false;
-  let mode: 'edit' | 'play' = 'play';
-  let sheet = false;
+  let mode: 'edit' | 'play' = 'edit';
+  let sheet = true;
   let authored: Board = emptyBoard();
   let selection: Selection = null;
-  let drag: { x: number; y: number; x0: number; y0: number; x1: number; y1: number } | null = null;
+  let draft: { ringId: string; grow: { x: number; y: number; angle: number } | null } | null = null;
+  let drag: {
+    kind: 'free' | 'x' | 'y' | 'turn';
+    px: number;
+    py: number;
+    ox: number;
+    oy: number;
+    base: number;
+  } | null = null;
 
   function ringOf(id: string): RingBody | undefined {
     return authored.rings.find((ring) => ring.id === id);
@@ -76,37 +91,63 @@ export function mountEditor(
     play.setEditing(mode === 'edit');
     if (selection) play.select(selection.id);
     if (refreshUi) render();
+    else syncGuides();
   }
 
   function render(): void {
     if (!levelHost || !editorPanel) return;
-    document.getElementById('dock')?.classList.toggle('is-compact', !levelMode && !settingsOpen);
     levelHost.replaceChildren();
     document.getElementById('hud-settings')?.classList.toggle('is-on', settingsOpen);
     document.getElementById('hud-settings')?.setAttribute('aria-pressed', settingsOpen ? 'true' : 'false');
     editorPanel.replaceChildren();
     if (settingsOpen) editorPanel.append(settingsPane());
-    if (!levelMode) {
-      play.setEditing(false);
-      return;
-    }
-    for (let n = 1; n <= LEVEL_COUNT; n += 1) {
-      levelHost.append(button(String(n), () => void open(n), n === level));
-    }
+    levelHost.append(button('上一关', () => void open(level <= 1 ? count : level - 1)));
+    const current = document.createElement('span');
+    current.textContent = `第 ${level} 关`;
+    current.style.alignSelf = 'center';
+    current.style.fontWeight = '700';
+    levelHost.append(current);
+    levelHost.append(button('下一关', () => void open(level >= count ? 1 : level + 1)));
+    const jump = document.createElement('input');
+    jump.type = 'number';
+    jump.min = '1';
+    jump.max = String(count);
+    jump.step = '1';
+    jump.value = String(level);
+    jump.ariaLabel = '跳到第几关';
+    jump.title = `跳到第几关，共 ${count} 关`;
+    jump.style.width = '4.5rem';
+    jump.addEventListener('change', () => {
+      const next = Math.round(Number(jump.value));
+      if (!Number.isFinite(next)) return;
+      void open(Math.min(count, Math.max(1, next)));
+    });
+    levelHost.append(jump);
+    levelHost.append(button('加关', () => void addLevel()));
+    levelHost.append(button('删关', () => void removeLevel()));
     levelHost.append(button(mode === 'edit' ? '试玩' : '编辑', () => toggleMode()));
     levelHost.append(button('对齐', () => alignSides()));
     levelHost.append(button('保存', () => void persist()));
 
-    if (mode === 'play') return;
+    if (mode === 'play') {
+      play.setGuides(null);
+      return;
+    }
 
     editorPanel.append(selectionLine());
 
     const tools = document.createElement('div');
     tools.className = 'row';
-    tools.append(button('移动', () => { tool = 'move'; render(); }, tool === 'move'));
-    tools.append(button('转动', () => { tool = 'turn'; render(); }, tool === 'turn'));
+    tools.append(button('网格', () => {
+      gridOn = !gridOn;
+      render();
+    }, gridOn));
     tools.append(button('加环', () => addRing()));
     tools.append(button('加杆', () => addBar()));
+    tools.append(button('加手柄', () => beginHandle(), draft !== null));
+    if (selection?.kind === 'ring' && selection.connector !== null) {
+      tools.append(button('删除柄', () => removeHandle()));
+    }
     if (selection) tools.append(button('删除', () => removeSelected()));
     tools.append(button(sheet ? '收起' : '属性', () => {
       sheet = !sheet;
@@ -115,8 +156,25 @@ export function mountEditor(
     editorPanel.append(slider('镜头', play.zoomT(), 0, 1, 0.01, (t) => play.setZoomT(t)));
     editorPanel.append(slider('上下', play.panT(), 0, 1, 0.01, (t) => play.setPanT(t)));
     editorPanel.append(tools);
+    if (selection?.kind === 'ring') {
+      const ring = ringOf(selection.id);
+      if (ring && ring.connectors.length > 0) {
+        const handles = document.createElement('div');
+        handles.className = 'row';
+        ring.connectors.forEach((_, index) => {
+          handles.append(button(`柄 ${index + 1}`, () => {
+            selection = { kind: 'ring', id: ring.id, connector: index };
+            render();
+          }, selection?.kind === 'ring' && selection.connector === index));
+        });
+        editorPanel.append(handles);
+      }
+    }
 
-    if (!sheet) return;
+    if (!sheet) {
+      syncGuides();
+      return;
+    }
     const detail = document.createElement('div');
     detail.className = 'editor-sheet';
     editorPanel.append(detail);
@@ -129,6 +187,141 @@ export function mountEditor(
     }
     if (selection.kind === 'ring') renderRing(detail, selection.id, selection.connector);
     else renderBar(detail, selection.id);
+    syncGuides();
+  }
+
+  function beginHandle(): void {
+    if (draft) {
+      draft = null;
+      setStatus('');
+      render();
+      return;
+    }
+    if (selection?.kind !== 'ring') {
+      setStatus('先选一只环');
+      return;
+    }
+    draft = { ringId: selection.id, grow: null };
+    drag = null;
+    setStatus('点生长位置');
+    render();
+  }
+
+  function finishHandle(world: { x: number; y: number }): void {
+    const ring = draft ? ringOf(draft.ringId) : undefined;
+    if (!draft || !ring) {
+      draft = null;
+      return;
+    }
+    const placed = connectorAtHandle(ring, world.x, world.y);
+    if (!placed) return;
+    const connector = { angle: placed.angle, stem: placed.stem, target: null as string | null };
+    ring.connectors.push(connector);
+    const hit = play.pickAt(world);
+    if (hit?.kind === 'ring' && hit.id !== ring.id) {
+      if (colorsClash(authored, ring.id, hit.id)) {
+        setStatus('相连的两件颜色不能一样');
+      } else {
+        connector.target = hit.id;
+        followLockedHandles(authored, ring.id);
+        setStatus('');
+      }
+    }
+    selection = { kind: 'ring', id: ring.id, connector: ring.connectors.length - 1 };
+    draft = null;
+    commit();
+  }
+
+  function piecePose(): { x: number; y: number; arm: number; turn: number; body: number; angle: number } | null {
+    if (selection?.kind === 'ring') {
+      const ring = ringOf(selection.id);
+      if (!ring) return null;
+      return { x: ring.x, y: ring.y, arm: ring.outer + 0.32, turn: ring.outer + 0.18, body: ring.outer, angle: ring.theta };
+    }
+    if (selection?.kind === 'bar') {
+      const bar = barOf(selection.id);
+      if (!bar) return null;
+      const span = Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) / 2;
+      return {
+        x: (bar.x0 + bar.x1) / 2,
+        y: (bar.y0 + bar.y1) / 2,
+        arm: span + 0.28,
+        turn: Math.max(span, bar.grip) + 0.22,
+        body: Math.max(span, bar.grip),
+        angle: Math.atan2(bar.y1 - bar.y0, bar.x1 - bar.x0),
+      };
+    }
+    return null;
+  }
+
+  function hitGizmo(world: { x: number; y: number }): 'turn' | 'x' | 'y' | null {
+    if (draft) return null;
+    const pose = piecePose();
+    if (!pose) return null;
+    const dx = world.x - pose.x;
+    const dy = world.y - pose.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= pose.body) return null;
+    if (Math.abs(dist - pose.turn) <= TURN_HIT) return 'turn';
+    const onX = Math.abs(dy) <= AXIS_HIT && Math.abs(dx) <= pose.arm && Math.abs(dx) > CENTER_GAP;
+    const onY = Math.abs(dx) <= AXIS_HIT && Math.abs(dy) <= pose.arm && Math.abs(dy) > CENTER_GAP;
+    if (onX && !onY) return 'x';
+    if (onY && !onX) return 'y';
+    if (onX && onY) return Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
+    return null;
+  }
+
+  function snapGrid(value: number): number {
+    return Math.round(value / GRID) * GRID;
+  }
+
+  function snapTurn(value: number): number {
+    return Math.round(value / TURN_STEP) * TURN_STEP;
+  }
+
+  function setCenter(x: number, y: number): void {
+    if (selection?.kind === 'ring') {
+      const ring = ringOf(selection.id);
+      if (!ring) return;
+      ring.x = x;
+      ring.y = y;
+      followLockedHandles(authored, ring.id);
+      return;
+    }
+    if (selection?.kind === 'bar') {
+      const bar = barOf(selection.id);
+      if (!bar) return;
+      moveBar(bar, x - (bar.x0 + bar.x1) / 2, y - (bar.y0 + bar.y1) / 2);
+    }
+  }
+
+  function setAngle(angle: number): void {
+    if (selection?.kind === 'ring') {
+      const ring = ringOf(selection.id);
+      if (!ring) return;
+      ring.theta = wrapAngle(angle);
+      return;
+    }
+    if (selection?.kind === 'bar') {
+      const bar = barOf(selection.id);
+      if (!bar) return;
+      spinBar(bar, angle);
+    }
+  }
+
+  function syncGuides(cursor?: { x: number; y: number }): void {
+    if (mode !== 'edit') {
+      play.setGuides(null);
+      return;
+    }
+    const pose = draft ? null : piecePose();
+    const grow = draft?.grow;
+    play.setGuides({
+      grid: gridOn,
+      move: pose ? { x: pose.x, y: pose.y, arm: pose.arm } : null,
+      turn: pose ? { x: pose.x, y: pose.y, radius: pose.turn } : null,
+      handle: grow ? { x: grow.x, y: grow.y, x2: cursor?.x, y2: cursor?.y } : null,
+    });
   }
 
   function renderRing(root: HTMLElement, id: string, connectorIndex: number | null): void {
@@ -142,10 +335,12 @@ export function mountEditor(
     }));
     root.append(numberField('位置 x', ring.x, 0.01, (value) => {
       ring.x = value;
+      followLockedHandles(authored, ring.id);
       commit(false);
     }));
     root.append(numberField('位置 y', ring.y, 0.01, (value) => {
       ring.y = value;
+      followLockedHandles(authored, ring.id);
       commit(false);
     }));
     root.append(numberField('角度 °', toDegrees(ring.theta), 0.1, (value) => {
@@ -162,11 +357,6 @@ export function mountEditor(
       colors.append(chip);
     }
     root.append(colors);
-    root.append(button('加柄', () => {
-      ring.connectors.push({ angle: 0, stem: defaultStem(ring.outer), target: null });
-      selection = { kind: 'ring', id, connector: ring.connectors.length - 1 };
-      commit();
-    }));
     ring.connectors.forEach((_, index) => {
       const row = document.createElement('div');
       row.className = 'row';
@@ -301,6 +491,33 @@ export function mountEditor(
     commit();
   }
 
+  function removeHandle(): void {
+    if (selection?.kind !== 'ring' || selection.connector === null) return;
+    const ring = ringOf(selection.id);
+    if (!ring) return;
+    ring.connectors.splice(selection.connector, 1);
+    selection = { kind: 'ring', id: ring.id, connector: null };
+    commit();
+  }
+
+  function handleNear(world: { x: number; y: number }, ring: RingBody): number | null {
+    const band = ring.outer * PART.bandRatio;
+    let bestIndex: number | null = null;
+    let bestDistance = 0.28;
+    for (let index = 0; index < ring.connectors.length; index += 1) {
+      const connector = ring.connectors[index];
+      const layout = connectorLayout(ring.outer, band, connector.stem);
+      const aim = ring.theta + connector.angle;
+      const x = ring.x + Math.cos(aim) * layout.claspDist;
+      const y = ring.y + Math.sin(aim) * layout.claspDist;
+      const distance = Math.hypot(world.x - x, world.y - y);
+      if (distance > bestDistance) continue;
+      bestDistance = distance;
+      bestIndex = index;
+    }
+    return bestIndex;
+  }
+
   function removeSelected(): void {
     if (!selection) return;
     if (selection.kind === 'ring') {
@@ -322,6 +539,7 @@ export function mountEditor(
   function toggleMode(): void {
     mode = mode === 'edit' ? 'play' : 'edit';
     if (mode === 'play') sheet = false;
+    draft = null;
     drag = null;
     play.setEditing(mode === 'edit');
     play.replace(structuredClone(authored));
@@ -330,15 +548,43 @@ export function mountEditor(
     render();
   }
 
+  async function addLevel(): Promise<void> {
+    try {
+      const index = await createLevel();
+      count = await fetchLevelCount();
+      await open(index);
+      setStatus(`已添加第 ${index} 关`);
+    } catch (error) {
+      setStatus(`加关失败：${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  }
+
+  async function removeLevel(): Promise<void> {
+    if (count <= 1) {
+      setStatus('至少留一关');
+      return;
+    }
+    if (!window.confirm(`删除第 ${level} 关？后面的关会往前补。`)) return;
+    try {
+      await deleteLevel(level);
+      count = await fetchLevelCount();
+      await open(Math.min(level, count));
+      setStatus('已删除');
+    } catch (error) {
+      setStatus(`删关失败：${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  }
+
   async function open(index: number): Promise<void> {
-    level = index;
-    mode = levelMode ? 'edit' : 'play';
+    count = await fetchLevelCount();
+    level = Math.min(Math.max(1, index), count);
     selection = null;
+    draft = null;
     drag = null;
-    authored = await loadLevel(index);
+    authored = await loadLevel(level);
     hud.setLevel(level);
     hud.resetMoves();
-    play.setEditing(true);
+    play.setEditing(mode === 'edit');
     commit();
     play.frame();
     setStatus(mode === 'edit' ? `编辑第 ${level} 关` : '');
@@ -364,23 +610,6 @@ export function mountEditor(
   function settingsPane(): HTMLDivElement {
     const pane = document.createElement('div');
     pane.className = 'settings';
-    const row = document.createElement('div');
-    row.className = 'row';
-    const name = document.createElement('span');
-    name.textContent = '关卡模式';
-    row.append(name);
-    row.append(button(levelMode ? '开' : '关', () => {
-      levelMode = !levelMode;
-      settingsOpen = false;
-      sheet = false;
-      selection = null;
-      mode = levelMode ? 'edit' : 'play';
-      play.setEditing(levelMode);
-      play.select(null);
-      if (levelMode) commit();
-      else render();
-    }, levelMode));
-    pane.append(row);
     pane.append(hapticPane());
     return pane;
   }
@@ -457,6 +686,10 @@ export function mountEditor(
   function selectionLine(): HTMLParagraphElement {
     const node = document.createElement('p');
     node.className = 'pick';
+    if (draft) {
+      node.textContent = draft.grow ? '再点把手位置' : '点生长位置';
+      return node;
+    }
     if (!selection) {
       node.textContent = '还没选中';
       return node;
@@ -478,7 +711,10 @@ export function mountEditor(
     const colorName = color !== undefined ? names[color] ?? '' : '';
     const kind = ring ? '环' : '杆';
     const handle = selection.kind === 'ring' && selection.connector !== null ? ` · 柄 ${selection.connector + 1}` : '';
-    node.append(swatch, document.createTextNode(`选中 ${colorName}${kind} ${selection.id}${handle}`));
+    const place = ring
+      ? `  x ${ring.x.toFixed(2)}  y ${ring.y.toFixed(2)}  ${toDegrees(ring.theta).toFixed(1)}°`
+      : '';
+    node.append(swatch, document.createTextNode(`选中 ${colorName}${kind} ${selection.id}${handle}${place}`));
     return node;
   }
 
@@ -581,7 +817,7 @@ export function mountEditor(
 
   const advance = (): void => {
     if (mode === 'edit') return;
-    void open(level >= LEVEL_COUNT ? 1 : level + 1);
+    void open(level >= count ? 1 : level + 1);
   };
 
   const replay = (): void => {
@@ -601,67 +837,96 @@ export function mountEditor(
     if (mode !== 'edit') return;
     const world = play.pointerWorld(event, true);
     if (!world) return;
-    const hit = play.pickAt(world);
-    if (!hit) {
+    if (draft) {
+      const ring = ringOf(draft.ringId);
+      if (!ring) {
+        draft = null;
+        render();
+        return;
+      }
+      if (!draft.grow) {
+        const dx = world.x - ring.x;
+        const dy = world.y - ring.y;
+        if (Math.hypot(dx, dy) > ring.outer + 0.4) {
+          draft = null;
+          setStatus('');
+          render();
+          return;
+        }
+        const aim = Math.atan2(dy, dx);
+        const radius = (ring.inner + ring.outer) / 2;
+        draft.grow = {
+          x: ring.x + Math.cos(aim) * radius,
+          y: ring.y + Math.sin(aim) * radius,
+          angle: wrapAngle(aim - ring.theta),
+        };
+        setStatus('点把手位置');
+        render();
+        return;
+      }
+      finishHandle(world);
+      return;
+    }
+    const gizmo = hitGizmo(world);
+    const hit = gizmo ? null : play.pickAt(world);
+    if (!gizmo && !hit) {
       selection = null;
       play.select(null);
+      drag = null;
       render();
       return;
     }
-    selection = hit.kind === 'ring' ? { kind: 'ring', id: hit.id, connector: selection?.kind === 'ring' && selection.id === hit.id ? selection.connector : null } : { kind: 'bar', id: hit.id };
-    const bar = hit.kind === 'bar' ? barOf(hit.id) : undefined;
+    if (hit) {
+      if (hit.kind === 'ring') {
+        const ring = ringOf(hit.id);
+        const connector = ring ? handleNear(world, ring) : null;
+        selection = { kind: 'ring', id: hit.id, connector };
+      } else {
+        selection = { kind: 'bar', id: hit.id };
+      }
+    }
+    const pose = piecePose();
+    if (!pose || !selection) return;
+    const pointerA = Math.atan2(world.y - pose.y, world.x - pose.x);
     drag = {
-      x: world.x,
-      y: world.y,
-      x0: bar?.x0 ?? 0,
-      y0: bar?.y0 ?? 0,
-      x1: bar?.x1 ?? 0,
-      y1: bar?.y1 ?? 0,
+      kind: gizmo === 'turn' ? 'turn' : gizmo === 'x' ? 'x' : gizmo === 'y' ? 'y' : 'free',
+      px: world.x,
+      py: world.y,
+      ox: pose.x,
+      oy: pose.y,
+      base: gizmo === 'turn' ? pose.angle - pointerA : pose.angle,
     };
     canvas.setPointerCapture(event.pointerId);
-    render();
+    play.select(selection.id);
+    syncGuides();
   });
 
   canvas.addEventListener('pointermove', (event) => {
-    if (mode !== 'edit' || !drag || !selection) return;
+    if (mode !== 'edit') return;
     const world = play.pointerWorld(event, false);
     if (!world) return;
-    if (selection.kind === 'ring') {
-      const ring = ringOf(selection.id);
-      if (!ring) return;
-      if (tool === 'move') {
-        ring.x += world.x - drag.x;
-        ring.y += world.y - drag.y;
-        drag.x = world.x;
-        drag.y = world.y;
-      } else {
-        const lever = (ring.inner + ring.outer) / 2;
-        const rx = drag.x - ring.x;
-        const ry = drag.y - ring.y;
-        const lever2 = Math.max(rx * rx + ry * ry, lever * lever);
-        ring.theta = wrapAngle(ring.theta + (rx * (world.y - drag.y) - ry * (world.x - drag.x)) / lever2);
-        drag.x = world.x;
-        drag.y = world.y;
-      }
+    if (draft?.grow) {
+      syncGuides(world);
+      return;
+    }
+    if (!drag || !selection) return;
+    if (drag.kind === 'turn') {
+      const pointerA = Math.atan2(world.y - drag.oy, world.x - drag.ox);
+      const angle = drag.base + pointerA;
+      setAngle(gridOn ? snapTurn(angle) : angle);
     } else {
-      const bar = barOf(selection.id);
-      if (!bar) return;
-      if (tool === 'move') {
-        moveBar(bar, world.x - drag.x, world.y - drag.y);
-        drag.x = world.x;
-        drag.y = world.y;
-      } else {
-        const cx = (drag.x0 + drag.x1) / 2;
-        const cy = (drag.y0 + drag.y1) / 2;
-        const a0 = Math.atan2(drag.y - cy, drag.x - cx);
-        const a1 = Math.atan2(world.y - cy, world.x - cx);
-        const base = Math.atan2(drag.y1 - drag.y0, drag.x1 - drag.x0);
-        spinBar(bar, base + (a1 - a0));
+      let x = drag.kind === 'y' ? drag.ox : drag.ox + (world.x - drag.px);
+      let y = drag.kind === 'x' ? drag.oy : drag.oy + (world.y - drag.py);
+      if (gridOn) {
+        if (drag.kind !== 'y') x = snapGrid(x);
+        if (drag.kind !== 'x') y = snapGrid(y);
       }
+      setCenter(x, y);
     }
     stripHandlePins(authored);
     play.pose(structuredClone(authored));
     play.select(selection.id);
+    syncGuides();
   });
 
   canvas.addEventListener('pointerup', () => {

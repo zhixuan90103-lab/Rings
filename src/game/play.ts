@@ -70,6 +70,15 @@ import {
   type UsableRect,
 } from './camera';
 
+export type EditorGuides = {
+  grid: boolean;
+  /** Cross at the selected center. `arm` is the half-length of each axis. */
+  move: { x: number; y: number; arm: number } | null;
+  turn: { x: number; y: number; radius: number } | null;
+  /** Handle placement: grow point, and the clasp point while the second click is pending. */
+  handle: { x: number; y: number; x2?: number; y2?: number } | null;
+};
+
 export type PlayHandles = {
   resize: () => void;
   dispose: () => void;
@@ -81,6 +90,8 @@ export type PlayHandles = {
   pointerWorld: (event: PointerEvent, clampToDesign: boolean) => { x: number; y: number } | null;
   pickAt: (world: { x: number; y: number }) => { kind: 'ring'; id: string } | { kind: 'bar'; id: string } | null;
   select: (id: string | null) => void;
+  /** Edit-only overlay. Pass null to clear. Ignored while editing is off. */
+  setGuides: (guides: EditorGuides | null) => void;
   frame: () => void;
   zoomT: () => number;
   setZoomT: (t: number) => void;
@@ -93,12 +104,28 @@ type PieceView = {
   kind: 'ring' | 'bar';
   mesh: THREE.Object3D;
   falling: boolean;
+  shape: string;
 };
 
 
 
 function plastic(color: number): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0.02 });
+}
+
+function ringShape(ring: { outer: number; gap: number; color?: number; connectors: { angle: number; stem: number; target: string | null }[] }): string {
+  const connectors = ring.connectors.map((connector) => `${connector.angle.toFixed(4)},${connector.stem.toFixed(4)}`).join(';');
+  return `${ring.outer.toFixed(4)}:${ring.gap.toFixed(4)}:${ring.color ?? ''}:${connectors}`;
+}
+
+function ringMesh(ring: { id: string; outer: number; gap: number; color?: number; connectors: { angle: number; stem: number }[] }): THREE.Object3D {
+  const { outer, depth, scale } = PART;
+  const band = ring.outer * PART.bandRatio;
+  const ringDepth = depth * (ring.outer / (outer * scale));
+  const tint = ring.color ?? colorOf(ring.id);
+  return ring.connectors.length > 0
+    ? ringWithConnectors(ring.outer, band, ring.gap, ringDepth, tint, ring.connectors)
+    : discRing(ring.outer, band, ring.gap, ringDepth, tint);
 }
 
 function colorOf(id: string): number {
@@ -188,6 +215,90 @@ export function mountPlay(options: {
   halo.visible = false;
   halo.renderOrder = 8;
   root.add(halo);
+  const guides = new THREE.Group();
+  guides.renderOrder = 9;
+  root.add(guides);
+  const gridLayer = new THREE.Group();
+  const liveLayer = new THREE.Group();
+  guides.add(gridLayer, liveLayer);
+  let gridDrawn = false;
+
+  function clearLayer(layer: THREE.Group): void {
+    for (const child of [...layer.children]) {
+      layer.remove(child);
+      disposeObject(child);
+    }
+  }
+
+  function clearGuides(): void {
+    clearLayer(gridLayer);
+    clearLayer(liveLayer);
+    gridDrawn = false;
+  }
+
+  function guideLine(points: [number, number][], color: number, opacity: number, z = 0.62): THREE.Line {
+    const geometry = new THREE.BufferGeometry().setFromPoints(
+      points.map(([x, y]) => new THREE.Vector3(x, y, z)),
+    );
+    const behind = z < 0;
+    const material = new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+      depthTest: behind,
+      depthWrite: false,
+    });
+    const line = new THREE.Line(geometry, material);
+    line.renderOrder = behind ? -2 : 9;
+    return line;
+  }
+
+  function setGuides(next: EditorGuides | null): void {
+    if (!editing || !next) {
+      clearGuides();
+      return;
+    }
+    if (next.grid !== gridDrawn) {
+      clearLayer(gridLayer);
+      gridDrawn = next.grid;
+      if (next.grid) {
+        for (let step = -120; step <= 120; step += 1) {
+          const value = step / 10;
+          const opacity = step % 10 === 0 ? 0.38 : 0.16;
+          gridLayer.add(guideLine([[-12, value], [12, value]], 0x2a2118, opacity, -0.35));
+          gridLayer.add(guideLine([[value, -12], [value, 12]], 0x2a2118, opacity, -0.35));
+        }
+      }
+    }
+    clearLayer(liveLayer);
+    if (next.move) {
+      const { x, y, arm } = next.move;
+      liveLayer.add(guideLine([[x - arm, y], [x + arm, y]], 0xc4552a, 0.95));
+      liveLayer.add(guideLine([[x, y - arm], [x, y + arm]], 0x2a6a4a, 0.95));
+    }
+    if (next.turn) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(Math.max(0.05, next.turn.radius - 0.025), next.turn.radius + 0.025, 64),
+        new THREE.MeshBasicMaterial({ color: 0x2a2118, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.85 }),
+      );
+      ring.position.set(next.turn.x, next.turn.y, 0.62);
+      ring.renderOrder = 9;
+      liveLayer.add(ring);
+    }
+    if (next.handle) {
+      const { x, y, x2, y2 } = next.handle;
+      const dot = new THREE.Mesh(
+        new THREE.CircleGeometry(0.06, 16),
+        new THREE.MeshBasicMaterial({ color: 0xc4552a, depthTest: false }),
+      );
+      dot.position.set(x, y, 0.63);
+      dot.renderOrder = 10;
+      liveLayer.add(dot);
+      if (x2 !== undefined && y2 !== undefined) {
+        liveLayer.add(guideLine([[x, y], [x2, y2]], 0xc4552a, 0.9));
+      }
+    }
+  }
 
   function placeHalo(): void {
     if (!editing || !selectedId) {
@@ -327,6 +438,16 @@ export function mountPlay(options: {
       if (view.kind === 'ring') {
         const ring = ringById(board, view.id);
         if (!ring) continue;
+        const shape = ringShape(ring);
+        if (shape !== view.shape) {
+          const mesh = ringMesh(ring);
+          mesh.userData.pieceId = ring.id;
+          root.add(mesh);
+          view.mesh.removeFromParent();
+          disposeObject(view.mesh);
+          view.mesh = mesh;
+          view.shape = shape;
+        }
         view.mesh.position.set(ring.x, ring.y, 0);
         view.mesh.rotation.z = ring.theta;
       } else {
@@ -783,18 +904,12 @@ export function mountPlay(options: {
   function showLevel(): void {
     const { outer, depth, scale } = PART;
     for (const ring of board.rings) {
-      const ringOuter = ring.outer;
-      const ringBand = ringOuter * PART.bandRatio;
-      const ringDepth = depth * (ringOuter / (outer * scale));
-      const tint = ring.color ?? colorOf(ring.id);
-      const mesh = ring.connectors.length > 0
-        ? ringWithConnectors(ringOuter, ringBand, ring.gap, ringDepth, tint, ring.connectors)
-        : discRing(ringOuter, ringBand, ring.gap, ringDepth, tint);
+      const mesh = ringMesh(ring);
       mesh.position.set(ring.x, ring.y, 0);
       mesh.rotation.z = ring.theta;
       mesh.userData.pieceId = ring.id;
       root.add(mesh);
-      views.push({ id: ring.id, kind: 'ring', mesh, falling: false });
+      views.push({ id: ring.id, kind: 'ring', mesh, falling: false, shape: ringShape(ring) });
     }
     for (const bar of board.bars) {
       const basis = outer * 2 * scale;
@@ -806,7 +921,7 @@ export function mountPlay(options: {
       capsule.position.set(x, y, 0.2);
       capsule.rotation.z = Math.atan2(bar.y1 - bar.y0, bar.x1 - bar.x0);
       root.add(capsule);
-      views.push({ id: bar.id, kind: 'bar', mesh: capsule, falling: false });
+      views.push({ id: bar.id, kind: 'bar', mesh: capsule, falling: false, shape: '' });
       const buckle = new THREE.Group();
       for (const child of [...stick.children]) buckle.add(child);
       const latch = board.latches.find((item) => item.barId === bar.id && item.release === 'sleeve');
@@ -1021,7 +1136,8 @@ export function mountPlay(options: {
       clearLeft = 0;
       drag = null;
       dragMoved = false;
-        pointerId = null;
+      pointerId = null;
+      if (!on) clearGuides();
       placeHalo();
     },
     frame: () => refreshLimits(true),
@@ -1042,6 +1158,7 @@ export function mountPlay(options: {
       selectedId = id;
       placeHalo();
     },
+    setGuides,
     dispose: () => {
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);

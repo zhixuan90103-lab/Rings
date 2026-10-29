@@ -21,6 +21,7 @@ import { createRenderer, resizeToDesign } from './create-renderer';
 import { haptics } from './utils/haptics';
 import { mountPlay } from './game/play';
 import { mountEditor } from './game/editor';
+import { mountPlaySession } from './game/playSession';
 import { mountResult } from './game/result';
 
 const shell = document.getElementById('shell')!;
@@ -148,7 +149,10 @@ async function boot(): Promise<void> {
 
   // Optional: document.body.classList.add('debug-safe-area')
 
-  levels = mountEditor(play, setStatus, { setLevel, resetMoves: () => setScore(0) });
+  const hud = { setLevel, resetMoves: () => setScore(0) };
+  levels = document.body.classList.contains('page-editor')
+    ? mountEditor(play, setStatus, hud)
+    : mountPlaySession(play, hud);
 
   if (haptics.isNativeIos()) {
     setLog(

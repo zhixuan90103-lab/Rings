@@ -1,11 +1,11 @@
 import { beginTwoFinger, boardBounds, cameraForFit, cameraForPinch, choosePinchLock, clampCamera, designNdc, editorFrame, editorPan, editorPanT, editorZoom, editorZoomT, frameFor, frameLift, stepTwoFinger, worldFromDesign, zoomCap } from './camera';
-import { connectorReach } from './parts';
+import { PART, connectorLayout, connectorReach } from './parts';
 import { gapCovers, signedDelta, wrapAngle } from './angle';
 import { barById, handlePoint, moveBar, nudgeRing, ringById, rotateRing, settle, beginDrag, cancelDrag, dragTo, ringFreeArcs } from './board';
 
 import { clampAngle, freeArcs, pinForbidden } from './interval';
 import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
-import { emptyBoard, seatConnectors } from './levelio';
+import { connectorAtClasp, connectorAtHandle, emptyBoard, followLockedHandles, seatConnectors } from './levelio';
 import { dragEffect } from './feedback';
 import { barHitsRing, barOverlapAmount, barsOverlapAmount, barStillInBuckle, buckleOverlapAmount, claspCenterDistance, connectorCoreDepth, connectorHitsRing, strikePoint } from './volume';
 import { BAR_RECOIL_WORLD, RING_RECOIL_MAX, WOBBLE_CYCLES, WOBBLE_SECONDS, beginRecoil, heldSign, releaseHold, stepRecoil, wobbleOffset } from './recoil';
@@ -30,6 +30,57 @@ const stuck = clampAngle(0.2, 3, free);
 assert(Math.abs(signedDelta(0, stuck)) <= 0.5 + 1e-4, 'clamp stays inside the gap');
 assert(gapCovers(0, 0, 1), 'centered gap covers the pin');
 assert(!gapCovers(2, 0, 1), 'solid does not count as covered');
+
+const claspOwner = {
+  id: 'owner',
+  kind: 'ring' as const,
+  x: 0.2,
+  y: -0.4,
+  inner: 0.5,
+  outer: 0.7,
+  gap: 0.4,
+  theta: 0.4,
+  connectors: [],
+};
+const claspAt = { x: 1.5, y: 0.6 };
+const placedHandle = connectorAtClasp(claspOwner, claspAt.x, claspAt.y);
+assert(placedHandle !== null, 'clasp click produces a handle');
+if (placedHandle) {
+  const band = claspOwner.outer * PART.bandRatio;
+  const layout = connectorLayout(claspOwner.outer, band, placedHandle.stem);
+  const reach = layout.claspDist + layout.bend;
+  const distance = Math.hypot(claspAt.x - claspOwner.x, claspAt.y - claspOwner.y);
+  assert(Math.abs(reach - distance) < 1e-6, 'stem puts the clasp center on the click');
+  const world = claspOwner.theta + placedHandle.angle;
+  assert(Math.abs(Math.atan2(claspAt.y - claspOwner.y, claspAt.x - claspOwner.x) - world) < 1e-6, 'handle aims at the click');
+}
+const drawnHandle = connectorAtHandle(claspOwner, claspAt.x, claspAt.y);
+assert(drawnHandle !== null, 'handle click produces a stem');
+if (drawnHandle) {
+  const band = claspOwner.outer * PART.bandRatio;
+  const drawn = connectorLayout(claspOwner.outer, band, drawnHandle.stem);
+  const distance = Math.hypot(claspAt.x - claspOwner.x, claspAt.y - claspOwner.y);
+  assert(Math.abs(drawn.claspDist - distance) < 1e-6, 'drawn clasp sits on the clicked point');
+}
+const locked = emptyBoard();
+locked.rings.push(
+  { id: 'owner', kind: 'ring', x: 0, y: 0, inner: 0.5, outer: 0.7, gap: 0.4, theta: 0, connectors: [{ angle: 0, stem: 0.2, target: 'other' }] },
+  { id: 'other', kind: 'ring', x: 1.4, y: 0, inner: 0.5, outer: 0.7, gap: 0.4, theta: 0, connectors: [{ angle: Math.PI, stem: 0.2, target: 'owner' }] },
+);
+const movedRing = locked.rings[0];
+const stillRing = locked.rings[1];
+movedRing.x = -0.6;
+followLockedHandles(locked, movedRing.id);
+const nearStem = movedRing.connectors[0].stem;
+const nearIncoming = stillRing.connectors[0].stem;
+movedRing.x = -1.6;
+followLockedHandles(locked, movedRing.id);
+assert(movedRing.connectors[0].stem > nearStem, 'outgoing rod grows as the ring moves away');
+assert(stillRing.connectors[0].stem > nearIncoming, 'incoming rod grows as its target moves away');
+const lockBand = movedRing.outer * PART.bandRatio;
+const lockLayout = connectorLayout(movedRing.outer, lockBand, movedRing.connectors[0].stem);
+const lockApart = Math.hypot(stillRing.x - movedRing.x, stillRing.y - movedRing.y);
+assert(Math.abs(lockLayout.claspDist + lockLayout.bend - lockApart) < 1e-6, 'clasp arc sits on the target ring');
 
 for (const level of LEVELS) {
   const board = level.make();

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>关卡编辑</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body class="page-editor">
+    <aside id="editor-desk" aria-label="关卡编辑">
+      <div class="desk-head">
+        <a href="./index.html">返回试玩</a>
+        <button type="button" id="hud-settings" class="hud-gear" aria-label="设置">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M19.14 12.94a7.4 7.4 0 0 0 .05-.94 7.4 7.4 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54a7.2 7.2 0 0 0-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.4 7.4 0 0 0-.05.94 7.4 7.4 0 0 0 .05.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.39 1.05.71 1.63.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54c.58-.23 1.13-.55 1.63-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"
+            />
+          </svg>
+        </button>
+      </div>
+      <p id="status" class="status"></p>
+      <div class="row" id="levels"></div>
+      <div id="editor" class="editor"></div>
+    </aside>
+
+    <div id="shell">
+      <div id="viewport">
+        <div id="app">
+          <div id="stage" aria-label="game-stage">
+            <div id="ui-root">
+              <header class="hud">
+                <div class="hud-level">
+                  <span class="hud-level-label">关卡</span>
+                  <span id="hud-level" class="hud-level-num">1</span>
+                </div>
+                <div id="hud-counter" class="hud-counter">0</div>
+                <span></span>
+              </header>
+              <div id="result" class="result" hidden>
+                <div class="result-card" role="dialog" aria-labelledby="result-title">
+                  <p id="result-title" class="result-title">恭喜过关</p>
+                  <div class="result-actions">
+                    <button type="button" id="result-replay">重玩</button>
+                    <button type="button" id="result-next">下一关</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="device-switcher" aria-label="device-viewport-switcher">
+      <button type="button" data-device="phone">手机竖屏</button>
+      <button type="button" data-device="pad">Pad 竖屏</button>
+    </div>
+    <div id="device-label"></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

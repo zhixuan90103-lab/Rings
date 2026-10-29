@@ -2,33 +2,77 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 
-/** Dev-only. Writes public/levels/1.json … 5.json. */
+/** Dev-only. Reads and writes public/levels/1.json, 2.json, … */
 function levelSavePlugin(): Plugin {
+  const dir = path.resolve('public/levels');
+  const fileOf = (index: number) => path.join(dir, `${index}.json`);
+  const ids = (): number[] => {
+    if (!fs.existsSync(dir)) return [];
+    return fs
+      .readdirSync(dir)
+      .map((name) => /^(\d+)\.json$/.exec(name))
+      .filter((match): match is RegExpExecArray => match !== null)
+      .map((match) => Number(match[1]))
+      .sort((a, b) => a - b);
+  };
+  const readBody = (req: import('node:http').IncomingMessage) =>
+    new Promise<string>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (chunk: Buffer) => chunks.push(chunk));
+      req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+      req.on('error', reject);
+    });
   return {
     name: 'level-save',
     configureServer(server) {
       server.middlewares.use('/__levels', (req, res, next) => {
-        const match = req.url?.match(/^\/([1-5])\/?$/);
-        if (!match || req.method !== 'PUT') {
+        const url = req.url ?? '';
+        const index = /^\/(\d+)\/?$/.exec(url);
+        if (req.method === 'POST' && (url === '/' || url === '')) {
+          const nextIndex = (ids().at(-1) ?? 0) + 1;
+          fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(
+            fileOf(nextIndex),
+            `${JSON.stringify({ rings: [], bars: [], pins: [], latches: [], volumes: true }, null, 2)}\n`,
+          );
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify({ index: nextIndex }));
+          return;
+        }
+        if (!index) {
           next();
           return;
         }
-        const chunks: Buffer[] = [];
-        req.on('data', (chunk: Buffer) => chunks.push(chunk));
-        req.on('end', () => {
-          try {
-            const text = Buffer.concat(chunks).toString('utf8');
+        const n = Number(index[1]);
+        if (req.method === 'PUT') {
+          void readBody(req).then((text) => {
             JSON.parse(text);
-            const file = path.resolve('public/levels', `${match[1]}.json`);
-            fs.mkdirSync(path.dirname(file), { recursive: true });
-            fs.writeFileSync(file, text);
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(fileOf(n), text.endsWith('\n') ? text : `${text}\n`);
             res.statusCode = 204;
             res.end();
-          } catch (error) {
+          }).catch((error: unknown) => {
             res.statusCode = 400;
             res.end(error instanceof Error ? error.message : 'bad json');
+          });
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const have = ids();
+          if (!have.includes(n) || have.length <= 1) {
+            res.statusCode = 400;
+            res.end('keep one level');
+            return;
           }
-        });
+          fs.unlinkSync(fileOf(n));
+          for (const id of have) {
+            if (id > n) fs.renameSync(fileOf(id), fileOf(id - 1));
+          }
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+        next();
       });
     },
   };
@@ -56,6 +100,12 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: true,
+    rollupOptions: {
+      input: {
+        main: path.resolve('index.html'),
+        editor: path.resolve('editor.html'),
+      },
+    },
   },
   esbuild: {
     target: 'es2022',

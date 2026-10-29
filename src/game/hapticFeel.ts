@@ -1,20 +1,22 @@
 /**
- * Tunable play haptics. Three events in ROTATE-RINGS §4:
- * lock a piece, a collision after it has moved, and a release that clears.
+ * Tunable play haptics. Four events in ROTATE-RINGS §4:
+ * lock a piece, a collision after it has moved, the ready-to-clear glow
+ * starting to brighten, and a release that clears.
  * The gear panel writes these. Play reads them at the moment it fires.
  */
 
 import { haptics } from '../utils/haptics';
 
-export type HapticKind = 'grab' | 'hit' | 'clear';
+export type HapticKind = 'grab' | 'hit' | 'ready' | 'clear';
 
 export type HapticPair = { intensity: number; sharpness: number };
 
 export type HapticFeel = Record<HapticKind, HapticPair>;
 
 export const HAPTIC_FEEL_DEFAULT: HapticFeel = {
-  grab: { intensity: 0.4, sharpness: 0.49 },
+  grab: { intensity: 0.3, sharpness: 0.3 },
   hit: { intensity: 0.42, sharpness: 1 },
+  ready: { intensity: 0.34, sharpness: 0.4 },
   clear: { intensity: 0.55, sharpness: 0.45 },
 };
 
@@ -23,6 +25,7 @@ const KEY = 'rings.haptic-feel';
 const labels: Record<HapticKind, string> = {
   grab: '点击',
   hit: '撞击',
+  ready: '变亮',
   clear: '消除',
 };
 
@@ -52,6 +55,7 @@ export function hapticFeel(): HapticFeel {
     return {
       grab: pair(data.grab, HAPTIC_FEEL_DEFAULT.grab),
       hit: pair(data.hit, HAPTIC_FEEL_DEFAULT.hit),
+      ready: pair(data.ready, HAPTIC_FEEL_DEFAULT.ready),
       clear: pair(data.clear, HAPTIC_FEEL_DEFAULT.clear),
     };
   } catch {

@@ -26,8 +26,8 @@
 | iOS 注入 | `scripts/bootstrap-ios.mjs` |
 | 音效方案（未实现） | `docs/AUDIO.md` |
 | 画面零件 | `src/game/parts.ts`，规范见 `docs/PARTS.md` |
-| 当前操作 | `src/game/play.ts` 与 `board.ts`。环绕自己的中心转：环带上跟夹角，孔内按环带半径折算，圆心上、下方的上下滑按左右侧跟手指方向。杆沿长边滑动，银卡扣锁定。按下碰到零件、带动后再撞、抬手解开各震一次。无效晃动不震。过关约 1 秒后由 `main.ts` 弹出 `#result` |
-| 手机设置 | `src/game/phoneSettings.ts`。试玩页右上角齿轮只开震动测试和三档手感 |
+| 当前操作 | `src/game/play.ts` 与 `board.ts`。环绕自己的中心转：环带上跟夹角，孔内按环带半径折算，圆心上、下方的上下滑按左右侧跟手指方向。杆沿长边滑动，银卡扣锁定。按下碰到零件、带动后再撞、提示亮开始变亮、抬手解开各震一次。无效晃动不震。过关约 1 秒后由 `main.ts` 弹出 `#result` |
+| 手机设置 | `src/game/phoneSettings.ts`。试玩页右上角齿轮只开震动测试和四档手感 |
 | 关卡编辑 | 电脑页 `editor.html`。菜单在手机框外。试玩页和真机没有编辑。规范见 `docs/ROTATE-RINGS.md` §9 |
 | 规则 | `docs/ROTATE-RINGS.md`。试玩读 `public/levels/`。打包时由 `src/game/packedLevels.ts` 收进程序 |
 

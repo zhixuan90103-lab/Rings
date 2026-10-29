@@ -570,6 +570,15 @@ header button,
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.haptic-row input[type='range'] {
+  touch-action: pan-x;
 }
 
 #haptic-panel .panel-title,

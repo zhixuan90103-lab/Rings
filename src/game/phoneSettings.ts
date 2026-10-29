@@ -1,6 +1,6 @@
 import { hapticFeel, hapticLabel, resetHapticFeel, setHapticPair, type HapticKind } from './hapticFeel';
 
-/** Phone gear: haptic test and the three play intensities. Not the level editor. */
+/** Phone gear: haptic test and the play intensities. Not the level editor. */
 export function mountPhoneSettings(): void {
   const gear = document.getElementById('hud-settings');
   const panel = document.getElementById('haptic-panel');
@@ -20,7 +20,7 @@ export function mountPhoneSettings(): void {
 
 function fillTune(tune: HTMLElement): void {
   tune.replaceChildren();
-  const kinds: HapticKind[] = ['grab', 'hit', 'clear'];
+  const kinds: HapticKind[] = ['grab', 'hit', 'ready', 'clear'];
   const title = document.createElement('p');
   title.className = 'panel-title';
   title.textContent = '试玩震动';

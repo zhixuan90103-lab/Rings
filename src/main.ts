@@ -31,8 +31,11 @@ import { mountResult } from './game/result';
 function blockWebViewGestures(): void {
   const editable = (target: EventTarget | null) =>
     target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+  const inSettings = (target: EventTarget | null) =>
+    target instanceof Element && target.closest('#haptic-panel') !== null;
   const stop = (event: Event) => {
     if (editable(event.target)) return;
+    if (event.type === 'touchmove' && inSettings(event.target)) return;
     event.preventDefault();
   };
   document.addEventListener('touchmove', stop, { capture: true, passive: false });

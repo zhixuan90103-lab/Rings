@@ -481,15 +481,25 @@ export function mountPlay(options: {
     applyReadyGlow();
   }
 
+  /** Ids that were already lit. A new id is the brighten, and that fires one pulse. */
+  let readyLit = new Set<string>();
+
   /**
    * Only call site for the ready glow. Skips the editor and a missing drag, skips falling views, and does not nudge.
    */
   function applyReadyGlow(): void {
     if (editing || !drag) {
       feedback.hint([]);
+      readyLit = new Set();
       return;
     }
     const ids = new Set(previewClear(board, drag));
+    let brightened = false;
+    for (const id of ids) {
+      if (!readyLit.has(id)) brightened = true;
+    }
+    readyLit = ids;
+    if (brightened) pulseHaptic('ready');
     feedback.hint(views.filter((view) => ids.has(view.id) && !view.falling).map((view) => view.mesh));
   }
 

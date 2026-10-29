@@ -91,7 +91,7 @@ renderer.setSize(390, 844)          // 始终设计分辨率
 网页，`src/style.css` 与 `src/main.ts` 的 `blockWebViewGestures`：
 
 - `*` 写 `-webkit-touch-callout: none`、`user-select: none`、`-webkit-user-drag: none`。这个 callout 不继承，只写在 `html` 上挡不住子元素。`input` 和 `textarea` 恢复可选。
-- 非输入框拦截 `touchmove`、`gesturestart`、`selectstart`、`contextmenu`。`touchmove` 必须 `passive: false`。
+- 非输入框拦截 `touchmove`、`gesturestart`、`selectstart`、`contextmenu`。`touchmove` 必须 `passive: false`。落在 `#haptic-panel` 里的 `touchmove` 不拦，否则调参面板滑不动，滑杆也拖不动。
 - 不拦截 `touchstart`。齿轮和按钮的点击还在。
 - 这样停掉选字放大镜、长按复制菜单、双击和双指的系统缩放。三指撤销跟着选字一起消失。
 
@@ -127,7 +127,7 @@ SceneDelegate.rootViewController = BridgeViewController()
 只改 storyboard **不够**：Capacitor 8 用 SceneDelegate 直接 `CAPBridgeViewController()`，会绕过 storyboard，HUD 出现 `plugin: false`，按钮无震。
 
 Swift **没有** `prepare`；引擎在 `load()` 启动。UIKit 反馈在主线程触发。验收用 HUD **点我震动**（`impact`）和状态行 `plugin: true`。  
-试玩三种震写在 `src/game/play.ts`：按下碰到零件、带动后再撞、抬手解开。时机见 [ROTATE-RINGS.md](./ROTATE-RINGS.md) §4。短震播放器的复用在 `plugins/native-haptics/`，改完要 `ios:bootstrap`。
+试玩四种震写在 `src/game/play.ts`：按下碰到零件、带动后再撞、提示亮开始变亮、抬手解开。时机见 [ROTATE-RINGS.md](./ROTATE-RINGS.md) §4。短震播放器的复用在 `plugins/native-haptics/`，改完要 `ios:bootstrap`。
 
 ## 7b. Audio（尚未实现）
 
@@ -174,3 +174,4 @@ npm run cap:sync
 | 2026-10-29 | 系统手势：网页禁放大镜和系统缩放；原生推迟四边手势并锁死 WebView 回弹。便捷访问不在 App 接口里。见 §5b |
 | 2026-08-31 | 真机震动验通。根因：Capacitor 8 `SceneDelegate` 绕过 storyboard。bootstrap 现会改 SceneDelegate；HUD 用「点我震动」+ `plugin` 标志验收 |
 | 2026-10-29 | 圆环跟手分三档，见 ROTATE-RINGS §4。环带上跟夹角。孔内按弧长除以环带半径，小圆不转满。圆心上、下方的竖直部分按左右侧和手指方向转，右侧向上为逆时针，回头即反向 |
+| 2026-10-29 | 提示亮开始变亮加第四种震。默认：点击 0.30/0.30，撞击 0.42/1.00，变亮 0.34/0.40，消除 0.55/0.45。齿轮面板可滚动，见 §5b |

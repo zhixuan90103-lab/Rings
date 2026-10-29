@@ -68,7 +68,7 @@ npm run ios
 - 零件外形和组合：改 `src/game/parts.ts`，并同步 `docs/PARTS.md`。已定稿的尺寸、倒角、颜色不要跟着操作改  
 - 操作：`src/game/play.ts` 收指针，`src/game/intent.ts` 定拖谁，`src/game/board.ts` 算切向转角和沿长边的位移。银卡扣不进拖动。柄只在 `connectors`，读档丢掉 `catch:` 旧销。体积关按重叠变深退回，销钉关用禁区弧。跟手和意图以 `docs/ROTATE-RINGS.md` §4 为准  
 - 规则：`docs/ROTATE-RINGS.md` 与 `src/game/`。试玩读 `public/levels/`。手写关仍在 `levels.ts`  
-- 编辑：只改 `editor.ts` 和 `levelio.ts`。柄用 `{ angle, stem, target }`。保存时的对准、杆长和居中以 `docs/ROTATE-RINGS.md` §9 为准  
+- 编辑：只改 `editor.ts` 和 `levelio.ts`。柄用 `{ angle, stem, target }`。保存只写当前摆法。左右对齐是单独的按钮，规则以 `docs/ROTATE-RINGS.md` §9 为准  
 - 保留：adapt / create-renderer / haptics / plugins / `base`  
 - 触控：`clientToDesign` + 忽略 letterbox 外  
 - 音效：按 `docs/AUDIO.md` 接入；禁止热路径 `new Audio()` / 每发一次桥  

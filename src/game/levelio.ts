@@ -183,11 +183,7 @@ function aimConnector(owner: RingBody, connector: RingConnector, target: RingBod
  * Each handle is then aimed so its clasp center lands on the target ring.
  * Angle 0 stays +X, counterclockwise.
  */
-export function seatConnectors(board: Board): void {
-  for (const owner of board.rings) {
-    for (const connector of owner.connectors) bindConnector(board, owner, connector);
-  }
-  alignSideColumns(board);
+function aimConnectors(board: Board): void {
   for (const owner of board.rings) {
     for (const connector of owner.connectors) {
       if (!connector.target) continue;
@@ -196,6 +192,19 @@ export function seatConnectors(board: Board): void {
       aimConnector(owner, connector, target);
     }
   }
+}
+
+/** Pull side rings onto one shared left x and one shared right x, then re-aim handles. */
+export function alignColumns(board: Board): void {
+  alignSideColumns(board);
+  aimConnectors(board);
+}
+
+export function seatConnectors(board: Board): void {
+  for (const owner of board.rings) {
+    for (const connector of owner.connectors) bindConnector(board, owner, connector);
+  }
+  alignColumns(board);
 }
 
 /** Shift the whole level so its drawn bounds sit on the screen center, (0, 0). */

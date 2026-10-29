@@ -13,9 +13,8 @@ import {
   freshColor,
   loadLevel,
   makeRing,
-  centerBoard,
+  alignColumns,
   saveLevel,
-  seatConnectors,
   stripHandlePins,
 } from './levelio';
 
@@ -95,6 +94,7 @@ export function mountEditor(
       levelHost.append(button(String(n), () => void open(n), n === level));
     }
     levelHost.append(button(mode === 'edit' ? '试玩' : '编辑', () => toggleMode()));
+    levelHost.append(button('对齐', () => alignSides()));
     levelHost.append(button('保存', () => void persist()));
 
     if (mode === 'play') return;
@@ -344,14 +344,18 @@ export function mountEditor(
     setStatus(mode === 'edit' ? `编辑第 ${level} 关` : '');
   }
 
+  function alignSides(): void {
+    alignColumns(authored);
+    commit();
+    play.frame();
+    render();
+    setStatus(`第 ${level} 关左右两列已对齐`);
+  }
+
   async function persist(): Promise<void> {
     try {
-      seatConnectors(authored);
-      centerBoard(authored);
-      commit();
-      play.frame();
       await saveLevel(level, authored);
-      setStatus(`已保存第 ${level} 关，已对准并放到画面中心`);
+      setStatus(`已保存第 ${level} 关`);
     } catch (error) {
       setStatus(`保存失败：${error instanceof Error ? error.message : '未知错误'}`);
     }

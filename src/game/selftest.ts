@@ -11,6 +11,7 @@ import { barHitsRing, barOverlapAmount, barsOverlapAmount, barStillInBuckle, buc
 import { BAR_RECOIL_WORLD, RING_RECOIL_MAX, WOBBLE_CYCLES, WOBBLE_SECONDS, beginRecoil, heldSign, releaseHold, stepRecoil, wobbleOffset } from './recoil';
 import { ringChipPoints } from './shatter';
 import { DESIGN_HEIGHT, DESIGN_WIDTH } from '../adapt/design';
+import { emptyHand, handCamera, handDown, handUp } from './hand';
 import { INTENT_PAD, chooseIntent, intentWorld, listCandidates } from './intent';
 import { VIEW_H } from './camera';
 import { breakPraise, freshPraise, notePraiseClear } from './praise';
@@ -724,7 +725,20 @@ const slid = cameraForPinch({ x: cam.x, y: cam.y, zoom: cam.zoom, midX: 180, mid
 const followed = worldFromDesign(240, 400, slid.x, slid.y, cam.zoom);
 const origin = worldFromDesign(180, 400, cam.x, cam.y, cam.zoom);
 assert(Math.abs(followed.x - origin.x) < 1e-6 && Math.abs(followed.y - origin.y) < 1e-6, 'two fingers drag the point under their midpoint');
+const first = handDown(emptyHand(), 1, true);
+assert(first.effect === 'begin-piece' && first.hand.owner === 1, 'the first finger owns the piece');
+const added = handDown(first.hand, 2, true);
+assert(added.effect === 'begin-camera' && added.hand.owner === 1, 'the second finger takes the camera and keeps the owner');
+const lifted = handUp(added.hand, 1, false);
+assert(lifted.effect === 'settle' && lifted.hand.owner === null, 'the first finger lift settles');
+const cancelled = handUp(added.hand, 1, true);
+assert(cancelled.effect === 'none' && cancelled.hand.owner === 1, 'a cancel while the camera is up does not settle');
+const alone = handUp(first.hand, 1, true);
+assert(alone.effect === 'revert', 'a cancel of the only finger restores the piece');
+assert(handCamera(first.hand).effect === 'begin-camera', 'a second touch can open the camera without a pointer id');
+assert(handDown(emptyHand(), 1, false).effect === 'none', 'a press outside the stage does not start a piece');
 assert(choosePinchLock(4, 3, null) === null, 'a small two-finger motion does not lock yet');
+assert(choosePinchLock(1, 2, null, 2) === 'zoom', 'a takeover locks on a two-pixel pinch');
 assert(choosePinchLock(8, 20, null) === 'zoom', 'a wider pinch locks to zoom');
 assert(choosePinchLock(30, 20, 'zoom') === 'zoom', 'a locked zoom ignores a later pan');
 assert(choosePinchLock(30, 10, null) === 'pan', 'a sliding pair locks to pan');

@@ -45,11 +45,14 @@ import {
   sleeveGap,
   type IntentHit,
 } from './intent';
+import { emptyHand, handCamera, handDown, handUp, type Hand } from './hand';
 import {
   boardBounds,
   cameraForFit,
   beginTwoFinger,
   clampCamera,
+  PINCH_LOCK_PX,
+  PINCH_TAKEOVER_PX,
   editorFrame,
   editorZoom,
   editorZoomT,
@@ -162,7 +165,9 @@ export function mountPlay(options: {
   let pending: { hits: IntentHit[]; x0: number; y0: number; dx: number; dy: number; samples: { x: number; y: number }[] } | null = null;
   let pointerId: number | null = null;
   const fingers = new Map<number, { dx: number; dy: number }>();
+  let hand: Hand = emptyHand();
   let pinch: TwoFinger | null = null;
+  let pinchLockPx = PINCH_LOCK_PX;
   let hold = false;
   let fitted = true;
   let panT = 0.5;
@@ -452,7 +457,7 @@ export function mountPlay(options: {
     return rejected;
   }
 
-  function lockPending(event: PointerEvent, decided: boolean): void {
+  function lockPending(decided: boolean): void {
     if (!pending || drag) return;
     const held = pending;
     const last = held.samples[held.samples.length - 1];
@@ -470,7 +475,7 @@ export function mountPlay(options: {
       if (!decided) return;
       pending = null;
       pointerId = null;
-      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      if (pointerId !== null && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
       return;
     }
     const next = beginDrag(board, hit, held.x0, held.y0);
@@ -526,30 +531,61 @@ export function mountPlay(options: {
     const dist = Math.hypot(pts[0].dx - pts[1].dx, pts[0].dy - pts[1].dy);
     const midX = (pts[0].dx + pts[1].dx) / 2;
     const midY = (pts[0].dy + pts[1].dy) / 2;
-    const step = stepTwoFinger(pinch, midX, midY, dist, camera.position.x, camera.position.y, camera.zoom, bounds, limits);
+    const step = stepTwoFinger(
+      pinch,
+      midX,
+      midY,
+      dist,
+      camera.position.x,
+      camera.position.y,
+      camera.zoom,
+      bounds,
+      limits,
+      pinchLockPx,
+    );
     pinch = step.gesture;
     if (!step.camera) return;
     applyCamera(step.camera.x, step.camera.y, step.camera.zoom);
     fitted = false;
   }
 
+  function startPinch(lockPx: number): void {
+    pinchLockPx = lockPx;
+    beginPinch();
+  }
+
+  /** A second contact freezes the piece and starts the camera. The owner's lift settles. */
+  function takeOverCamera(): void {
+    const dragging = drag !== null || pending !== null;
+    hold = true;
+    startPinch(dragging ? PINCH_TAKEOVER_PX : PINCH_LOCK_PX);
+  }
+
+  function applyHand(next: Hand, effect: ReturnType<typeof handDown>['effect']): void {
+    hand = next;
+    hold = hand.ids.length > 0 && (hand.camera || hand.owner === null);
+    if (!hand.camera) pinch = null;
+    if (effect === 'begin-camera') takeOverCamera();
+    else if (effect === 'settle') {
+      lockPending(true);
+      if (drag) endDrag(false);
+      else dropPiece(false);
+    } else if (effect === 'revert') {
+      if (drag) endDrag(true);
+      else dropPiece(true);
+    }
+  }
+
   function onPointerDown(event: PointerEvent): void {
     if (editing) return;
     const point = rememberFinger(event);
-    if (!point || !isInDesignBounds(point.dx, point.dy)) return;
+    if (!point) return;
+    const inside = isInDesignBounds(point.dx, point.dy);
+    const step = handDown(hand, event.pointerId, inside);
+    if (step.effect === 'none' && step.hand === hand) return;
     fingers.set(event.pointerId, point);
-    if (fingers.size > 2) {
-      dropPiece(true);
-      pinch = null;
-      hold = true;
-      return;
-    }
-    if (fingers.size === 2) {
-      dropPiece(true);
-      hold = true;
-      beginPinch();
-      return;
-    }
+    applyHand(step.hand, step.effect);
+    if (step.effect !== 'begin-piece') return;
     if (hold || pointerId !== null) return;
     const world = designToWorld(point.dx, point.dy);
     const ray = pickByRay(world);
@@ -560,7 +596,7 @@ export function mountPlay(options: {
     lastStamp = event.timeStamp;
     canvas.setPointerCapture(event.pointerId);
     if (chooseIntent(board, hits, world.x, world.y, world.x, world.y, false, intentWorld(INTENT_CLEAR, camera.zoom))) {
-      lockPending(event, true);
+      lockPending(true);
     }
   }
 
@@ -603,7 +639,7 @@ export function mountPlay(options: {
       }
       const finger = rememberFinger(event);
       const travel = finger ? Math.hypot(finger.dx - pending.dx, finger.dy - pending.dy) : 0;
-      lockPending(event, travel >= INTENT_WINDOW * DESIGN_WIDTH);
+      lockPending(travel >= INTENT_WINDOW * DESIGN_WIDTH);
       return;
     }
     if (!drag) return;
@@ -665,10 +701,9 @@ export function mountPlay(options: {
     syncMeshes();
   }
 
-  function finishPointer(event: PointerEvent, cancel: boolean): void {
-    if (event.pointerId !== pointerId) return;
-    if (pending) lockPending(event, true);
+  function endDrag(cancel: boolean): void {
     if (!drag) return;
+    if (pointerId !== null && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
     const clicked = drag;
     const moved = dragMoved;
     if (cancel) cancelDrag(board, drag);
@@ -836,10 +871,8 @@ export function mountPlay(options: {
 
   function releaseFinger(event: PointerEvent, cancel: boolean): void {
     fingers.delete(event.pointerId);
-    if (pinch && fingers.size !== 2) pinch = null;
-    if (fingers.size === 0) hold = false;
-    else if (pinch === null && fingers.size > 0) hold = true;
-    finishPointer(event, cancel);
+    const step = handUp(hand, event.pointerId, cancel);
+    applyHand(step.hand, step.effect);
   }
 
   function onPointerUp(event: PointerEvent): void {
@@ -848,6 +881,46 @@ export function mountPlay(options: {
 
   function onPointerCancel(event: PointerEvent): void {
     releaseFinger(event, true);
+  }
+
+  function rememberTouch(touch: Touch): { dx: number; dy: number } | null {
+    return rememberFinger(touch);
+  }
+
+  function adoptTouches(list: TouchList): void {
+    fingers.clear();
+    for (const touch of [...list].slice(0, 2)) {
+      const point = rememberTouch(touch);
+      if (point) fingers.set(touch.identifier, point);
+    }
+  }
+
+  function onTouchStart(event: TouchEvent): void {
+    if (editing || event.touches.length < 2) return;
+    event.preventDefault();
+    adoptTouches(event.touches);
+    const step = handCamera(hand);
+    applyHand(step.hand, step.effect);
+  }
+
+  function onTouchMove(event: TouchEvent): void {
+    if (!pinch || event.touches.length < 2) return;
+    event.preventDefault();
+    adoptTouches(event.touches);
+    applyPinch();
+  }
+
+  function onTouchEnd(event: TouchEvent): void {
+    if (hand.owner !== null && ![...event.touches].some((touch) => touch.identifier === hand.owner)) {
+      const step = handUp(hand, hand.owner, false);
+      applyHand(step.hand, step.effect);
+    }
+    if (!hand.camera) return;
+    if (event.touches.length >= 2) {
+      adoptTouches(event.touches);
+      return;
+    }
+    applyHand({ ...hand, camera: false }, 'stop-camera');
   }
 
   function applyEditorView(zoom: number): void {
@@ -861,6 +934,10 @@ export function mountPlay(options: {
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', onPointerCancel);
+  window.addEventListener('touchstart', onTouchStart, { capture: true, passive: false });
+  window.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+  window.addEventListener('touchend', onTouchEnd, { capture: true });
+  window.addEventListener('touchcancel', onTouchEnd, { capture: true });
 
   function frame(now: number): void {
     const dt = Math.min(0.033, (now - last) / 1000);
@@ -902,6 +979,7 @@ export function mountPlay(options: {
     dragMoved = false;
     pointerId = null;
     fingers.clear();
+    hand = emptyHand();
     pinch = null;
     hold = false;
     awaitingNext = false;
@@ -924,6 +1002,7 @@ export function mountPlay(options: {
     feedback.clear();
     board = next;
     fingers.clear();
+    hand = emptyHand();
     pinch = null;
     hold = false;
     awaitingNext = false;
@@ -949,6 +1028,7 @@ export function mountPlay(options: {
       if (on === editing) return;
       editing = on;
       fingers.clear();
+      hand = emptyHand();
       pinch = null;
       hold = false;
       awaitingNext = false;
@@ -981,6 +1061,10 @@ export function mountPlay(options: {
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('pointercancel', onPointerCancel);
+      window.removeEventListener('touchstart', onTouchStart, { capture: true });
+      window.removeEventListener('touchmove', onTouchMove, { capture: true });
+      window.removeEventListener('touchend', onTouchEnd, { capture: true });
+      window.removeEventListener('touchcancel', onTouchEnd, { capture: true });
       options.renderer.setAnimationLoop(null);
       clearViews();
       scene.remove(root);

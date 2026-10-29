@@ -182,6 +182,8 @@ export function cameraForFit(bounds: Aabb, frame: Frame): { x: number; y: number
 
 /** Design pixels of movement before a two-finger gesture locks to zoom or pan. */
 export const PINCH_LOCK_PX = 12;
+/** A second finger that interrupts a drag locks the camera on a much shorter move. */
+export const PINCH_TAKEOVER_PX = 2;
 
 export type PinchLock = 'zoom' | 'pan';
 
@@ -190,9 +192,10 @@ export function choosePinchLock(
   midShift: number,
   distShift: number,
   previous: PinchLock | null,
+  lockPx = PINCH_LOCK_PX,
 ): PinchLock | null {
   if (previous) return previous;
-  if (midShift < PINCH_LOCK_PX && distShift < PINCH_LOCK_PX) return null;
+  if (midShift < lockPx && distShift < lockPx) return null;
   return distShift >= midShift ? 'zoom' : 'pan';
 }
 
@@ -233,11 +236,12 @@ export function stepTwoFinger(
   camZoom: number,
   bounds: Aabb,
   frame: Frame,
+  lockPx = PINCH_LOCK_PX,
 ): { gesture: TwoFinger; camera: { x: number; y: number; zoom: number } | null } {
   const midShift = Math.hypot(midX - gesture.midX, midY - gesture.midY);
   const distShift = Math.abs(dist - gesture.dist);
   const wasLocked = gesture.lock;
-  const lock = choosePinchLock(midShift, distShift, gesture.lock);
+  const lock = choosePinchLock(midShift, distShift, gesture.lock, lockPx);
   if (!lock || dist < 1e-3) return { gesture: { ...gesture, lock }, camera: null };
   const base: TwoFinger = wasLocked
     ? gesture

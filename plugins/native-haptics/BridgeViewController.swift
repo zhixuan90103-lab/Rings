@@ -26,4 +26,26 @@ final class BridgeViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(AdvancedHapticsPlugin())
         CAPLog.print("⚡️ AdvancedHapticsPlugin registered")
     }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        lockWebScroll()
+        setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        lockWebScroll()
+    }
+
+    /// A downward drag anywhere on the page was the WebView bounce, not the top-edge system gesture.
+    private func lockWebScroll() {
+        guard let scroll = webView?.scrollView else { return }
+        scroll.bounces = false
+        scroll.alwaysBounceVertical = false
+        scroll.alwaysBounceHorizontal = false
+        scroll.isScrollEnabled = false
+        scroll.contentInsetAdjustmentBehavior = .never
+        scroll.contentInset = .zero
+    }
 }

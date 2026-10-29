@@ -18,7 +18,7 @@ index.html
   → main.ts
        → applyNativeClass / safeArea
        → createRenderer(#stage)
-       → mountPlay（切向转环、沿长边滑杆，银卡扣锁定）
+       → mountPlay（转环见 ROTATE-RINGS §4，沿长边滑杆，银卡扣锁定）
        → 试玩页 mountPlaySession；编辑页 editor.html 才 mountEditor
        → mountDevicePreview → computeStageLayout → applyStageTransform
        → watchStageLayout

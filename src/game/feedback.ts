@@ -14,6 +14,10 @@ import { disposeSparkBurst, makeSparkBurst, stepSparkBurst, type SparkBurst } fr
 
 const GLOW = 0.16;
 const GLOW_SECONDS = 0.18;
+/** Steady prompt while a lift would remove the piece. A small lift of the piece's own color. */
+const HINT = 0.35;
+/** How long the prompt takes to reach full strength, and to go back out. */
+const HINT_SECONDS = 0.08;
 const RING_REARM = 0.08;
 const BAR_REARM = 0.03;
 
@@ -56,6 +60,7 @@ export function mountFeedback(root: THREE.Object3D) {
   let pose: Pose | null = null;
   let sparks: SparkBurst[] = [];
   let glow: { mesh: THREE.Object3D; left: number } | null = null;
+  let hints: { mesh: THREE.Object3D; level: number; target: number }[] = [];
   const state = { armed: true, free: 0 };
 
   function setGlow(mesh: THREE.Object3D, intensity: number): void {
@@ -66,6 +71,31 @@ export function mountFeedback(root: THREE.Object3D) {
         material.emissiveIntensity = intensity;
       }
     });
+  }
+
+  /** Own-color hint only. Callers skip this while impact owns the mesh. `level` is 0..1. */
+  function paintHint(mesh: THREE.Object3D, level: number): void {
+    mesh.traverse((node) => {
+      const material = (node as THREE.Mesh).material;
+      if (!(material instanceof THREE.MeshStandardMaterial)) return;
+      if (level <= 0) {
+        material.emissiveIntensity = 0;
+        return;
+      }
+      material.emissive.copy(material.color);
+      material.emissiveIntensity = HINT * level;
+    });
+  }
+
+  function hintLevel(mesh: THREE.Object3D): number {
+    return hints.find((item) => item.mesh === mesh)?.level ?? 0;
+  }
+
+  /** Impact is leaving this mesh. Restore a hint that is still up, otherwise go dark. */
+  function releaseImpact(mesh: THREE.Object3D): void {
+    const level = hintLevel(mesh);
+    if (level > 0) paintHint(mesh, level);
+    else setGlow(mesh, 0);
   }
 
   function clearPose(): void {
@@ -119,13 +149,21 @@ export function mountFeedback(root: THREE.Object3D) {
     },
     clearPose,
     arm,
+    /** Pieces a lift would remove. The light eases in and out over `HINT_SECONDS`. */
+    hint(meshes: THREE.Object3D[]): void {
+      for (const item of hints) item.target = meshes.includes(item.mesh) ? 1 : 0;
+      for (const mesh of meshes) {
+        if (!hints.some((item) => item.mesh === mesh)) hints.push({ mesh, level: 0, target: 1 });
+      }
+      hints = hints.filter((item) => item.target > 0 || item.level > 0);
+    },
     impact(mesh: THREE.Object3D, at: { x: number; y: number } | null, color: number): void {
       if (at) {
         const burst = makeSparkBurst(at.x, at.y, color);
         sparks.push(burst);
         root.add(burst.root);
       }
-      if (glow && glow.mesh !== mesh) setGlow(glow.mesh, 0);
+      if (glow && glow.mesh !== mesh) releaseImpact(glow.mesh);
       setGlow(mesh, GLOW);
       glow = { mesh, left: GLOW_SECONDS };
     },
@@ -134,8 +172,20 @@ export function mountFeedback(root: THREE.Object3D) {
       if (glow) {
         glow.left -= dt;
         setGlow(glow.mesh, Math.max(0, glow.left / GLOW_SECONDS) * GLOW);
-        if (glow.left <= 0) glow = null;
+        if (glow.left <= 0) {
+          const mesh = glow.mesh;
+          glow = null;
+          releaseImpact(mesh);
+        }
       }
+      const hintStep = dt / HINT_SECONDS;
+      for (const item of hints) {
+        if (item.level < item.target) item.level = Math.min(item.target, item.level + hintStep);
+        else if (item.level > item.target) item.level = Math.max(item.target, item.level - hintStep);
+        if (glow?.mesh === item.mesh) continue;
+        paintHint(item.mesh, item.level);
+      }
+      hints = hints.filter((item) => item.target > 0 || item.level > 0);
       sparks = sparks.filter((burst) => {
         if (!stepSparkBurst(burst, dt)) return true;
         root.remove(burst.root);
@@ -144,7 +194,7 @@ export function mountFeedback(root: THREE.Object3D) {
       });
     },
     busy(): boolean {
-      return pose !== null || glow !== null || sparks.length > 0;
+      return pose !== null || glow !== null || sparks.length > 0 || hints.length > 0;
     },
     clear(): void {
       clearPose();
@@ -155,6 +205,8 @@ export function mountFeedback(root: THREE.Object3D) {
       sparks = [];
       if (glow) setGlow(glow.mesh, 0);
       glow = null;
+      for (const item of hints) paintHint(item.mesh, 0);
+      hints = [];
       state.armed = true;
       state.free = 0;
     },

@@ -449,6 +449,30 @@ export function nudgeRing(board: Board, ring: RingBody, sign: number, pad: numbe
   nudgeRingOneWay(board, ring, -first, maxTurn);
 }
 
+/**
+ * Copy of the fields `settle` writes. Not a spread of `board`.
+ * Rings get a new `connectors` array of new connector objects (`target`).
+ * Pins are new objects because `syncPins` writes `x` and `y`.
+ */
+export function snapshotForSettle(board: Board): Board {
+  return {
+    rings: board.rings.map((ring) => ({
+      ...ring,
+      connectors: ring.connectors.map((connector) => ({ ...connector })),
+    })),
+    bars: board.bars.map((bar) => ({ ...bar })),
+    pins: board.pins.map((pin) => ({ ...pin })),
+    latches: board.latches.map((latch) => ({ ...latch })),
+    volumes: board.volumes,
+  };
+}
+
+/** Pieces that would leave if the finger lifted now. Does not change `board` or apply the 2% nudge. */
+export function previewClear(board: Board, drag: Drag): string[] {
+  return settle(snapshotForSettle(board), drag);
+}
+
+/** Writes: connector `target`, pin `x`/`y` via `syncPins`, and replaces `pins`, `latches`, `rings`, `bars`. */
 export function settle(board: Board, drag: Drag): string[] {
   syncPins(board);
   if (drag.kind === 'ring') {

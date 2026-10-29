@@ -1,7 +1,7 @@
 import { beginTwoFinger, boardBounds, cameraForFit, cameraForPinch, choosePinchLock, clampCamera, designNdc, editorFrame, editorPan, editorPanT, editorZoom, editorZoomT, frameFor, frameLift, stepTwoFinger, worldFromDesign, zoomCap } from './camera';
 import { PART, connectorLayout, connectorReach } from './parts';
 import { gapCovers, signedDelta, wrapAngle } from './angle';
-import { barById, handlePoint, moveBar, nudgeRing, ringById, rotateRing, settle, beginDrag, cancelDrag, dragTo, ringFreeArcs } from './board';
+import { barById, handlePoint, moveBar, nudgeRing, previewClear, ringById, rotateRing, settle, snapshotForSettle, beginDrag, cancelDrag, dragTo, ringFreeArcs } from './board';
 
 import { clampAngle, freeArcs, pinForbidden } from './interval';
 import { LEVELS, levelBar, levelBasic, levelPin, levelScreen, levelStopClosed, levelTwo } from './levels';
@@ -112,6 +112,62 @@ assert(pinLevel.rings.length === 0, 'ring left the board');
 const two = levelTwo();
 const leftTwo = settle(two, { kind: 'ring', id: 'a', theta: 0, x: 0, y: 0 });
 assert(leftTwo.includes('a') && leftTwo.includes('b'), 'freeing one ring cascades the other');
+
+const previewBoard = levelTwo();
+const hinted = previewClear(previewBoard, { kind: 'ring', id: 'a', theta: 0, x: 0, y: 0 });
+assert(hinted.includes('a') && hinted.includes('b'), 'ready glow lists every piece a lift would remove');
+assert(previewBoard.rings.length === 2, 'ready glow does not remove pieces');
+
+const seat = {
+  id: 'seat',
+  kind: 'ring' as const,
+  x: 0,
+  y: 0,
+  inner: 0.5,
+  outer: 0.7,
+  gap: 1.2,
+  theta: Math.PI,
+  connectors: [],
+};
+const hintOwner = {
+  id: 'owner',
+  kind: 'ring' as const,
+  x: -2.2,
+  y: 0,
+  inner: 0.5,
+  outer: 0.7,
+  gap: 0.4,
+  theta: 0,
+  connectors: [{ angle: 0, stem: 0.2, target: 'seat' }],
+};
+const aliasBoard = emptyBoard();
+aliasBoard.rings = [seat, hintOwner];
+aliasBoard.pins = [
+  {
+    id: 'worn',
+    ownerId: 'owner',
+    localAngle: Math.PI / 2,
+    localRadius: 0.6,
+    x: 99,
+    y: 99,
+    role: 'block',
+    limitRingId: null,
+    stopHalf: 0,
+  },
+];
+const clasp = hintOwner.connectors[0];
+const point = handlePoint(hintOwner, clasp);
+const seatAngle = Math.atan2(point.y - seat.y, point.x - seat.x);
+assert(clasp.target === 'seat', 'alias fixture starts locked');
+assert(gapCovers(seat.theta, seatAngle, seat.gap), 'alias fixture gap covers the handle');
+assert(!connectorHitsRing(hintOwner, seat), 'alias fixture handle is outside the solid');
+const aliasCopy = snapshotForSettle(aliasBoard);
+assert(aliasCopy.pins[0] !== aliasBoard.pins[0], 'snapshot pin is a new object');
+assert(aliasCopy.rings[1].connectors !== hintOwner.connectors, 'snapshot connectors array is new');
+assert(aliasCopy.rings[1].connectors[0] !== clasp, 'snapshot connector is a new object');
+previewClear(aliasBoard, { kind: 'ring', id: 'seat', theta: 0, x: 0, y: 0 });
+assert(clasp.target === 'seat', 'preview does not clear the live handle');
+assert(aliasBoard.pins[0].x === 99 && aliasBoard.pins[0].y === 99, 'preview does not move the live pin');
 
 const barLevel = levelBar();
 const onlyBar = settle(barLevel, { kind: 'bar', id: 'bar', t: 0.15, x: 0, y: 0 });

@@ -20,6 +20,7 @@ import {
   tangentialStep,
   moveBar,
   nudgeRing,
+  previewClear,
   ringById,
   settle,
   syncPins,
@@ -477,6 +478,19 @@ export function mountPlay(options: {
     }
     applyFeedback();
     placeHalo();
+    applyReadyGlow();
+  }
+
+  /**
+   * Only call site for the ready glow. Skips the editor and a missing drag, skips falling views, and does not nudge.
+   */
+  function applyReadyGlow(): void {
+    if (editing || !drag) {
+      feedback.hint([]);
+      return;
+    }
+    const ids = new Set(previewClear(board, drag));
+    feedback.hint(views.filter((view) => ids.has(view.id) && !view.falling).map((view) => view.mesh));
   }
 
   function applyFeedback(): void {

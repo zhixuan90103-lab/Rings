@@ -197,9 +197,9 @@
 
 编辑菜单在 `#editor-desk`，放在手机框外面，不跟 390×844 一起缩放，也不被这个框裁切。环、杆和柄仍画在这个画面里。侧栏自己滚动，属性不再单独限高。
 
-编辑页打开就是编辑。侧栏可以切回试玩，用来看规则。试玩时不显示网格和坐标。手机画面里不再放齿轮。侧栏齿轮只留震动设置。`#status` 只留下编辑提示，空的时候不占位。
+编辑页打开就是编辑。侧栏可以切回试玩，用来看规则。试玩时不显示网格和坐标。手机画面右上角的齿轮只打开震动测试和三档手感，不进关卡编辑。`#status` 只留下编辑提示，空的时候不占位。
 
-编辑只在 `npm run dev` 里改文件。关卡是 `public/levels/1.json` 起按顺序编号，有几关算几关。`src/game/levels.ts` 仍是手写关，编辑不写这个文件。
+编辑只在 `npm run dev` 里改文件。关卡是 `public/levels/1.json` 起按顺序编号，有几关算几关。打进手机包时，这些 JSON 由 `import.meta.glob` 收进程序，不靠真机再去请求文件。改完关卡要重新 `npm run build` 再 `npm run cap:sync`。`src/game/levels.ts` 仍是手写关，编辑不写这个文件。
 
 ### 关卡
 
@@ -265,7 +265,8 @@
 | `src/game/board.ts` | 销、卡扣、切向拖动、沿长边拖动、抬手、连锁。柄的连接是 `connectors.target`。体积关按步退回，销钉关用禁区弧 |
 | `src/game/volume.ts` | 按画出来的形体判重叠，并给出撞击火花的落点。尺寸读 `parts.ts` 的 `connectorMetrics` 和 `buckleMetrics` |
 | `src/game/levels.ts` | 手写关卡。`levelBasic`（`volumes`），`levelScreen` |
-| `src/game/levelio.ts` | 读写 `public/levels/N.json`。加关、删关。对齐按钮才收左右列并让已有目标的柄心对准。`connectorAtHandle` 把画出来的柄心放到空白处的第二次点击上。保存只写当前摆法。读档和保存丢掉 `catch:` 旧柄销 |
+| `src/game/packedLevels.ts` | 把 `public/levels/*.json` 打进包。真机读这份，不再请求文件 |
+| `src/game/levelio.ts` | 读写关卡。开发时读文件，打包后读 `packedLevels`。加关、删关。对齐按钮才收左右列并让已有目标的柄心对准。保存只写当前摆法 |
 | `src/game/playSession.ts` | 试玩页换关。按现有文件数循环，不带编辑菜单 |
 | `src/game/editor.ts` | 只在 `editor.html`。侧栏、十字和旋转圈、网格、两次点击加手柄、属性、对齐、保存 |
 | `src/game/fall.ts` | 碎块的画面深度 `FALL_Z`。整件刚体掉落不再用于试玩 |

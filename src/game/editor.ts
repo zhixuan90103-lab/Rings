@@ -1,5 +1,4 @@
 import type { PlayHandles } from './play';
-import { hapticFeel, hapticLabel, pulseHaptic, resetHapticFeel, setHapticPair, type HapticKind } from './hapticFeel';
 import type { BarBody, Board, RingBody } from './board';
 import { syncPins } from './board';
 import { wrapAngle } from './angle';
@@ -51,7 +50,6 @@ export function mountEditor(
   let level = 1;
   let count = 1;
   let gridOn = true;
-  let settingsOpen = false;
   let mode: 'edit' | 'play' = 'edit';
   let sheet = true;
   let authored: Board = emptyBoard();
@@ -97,10 +95,7 @@ export function mountEditor(
   function render(): void {
     if (!levelHost || !editorPanel) return;
     levelHost.replaceChildren();
-    document.getElementById('hud-settings')?.classList.toggle('is-on', settingsOpen);
-    document.getElementById('hud-settings')?.setAttribute('aria-pressed', settingsOpen ? 'true' : 'false');
     editorPanel.replaceChildren();
-    if (settingsOpen) editorPanel.append(settingsPane());
     levelHost.append(button('上一关', () => void open(level <= 1 ? count : level - 1)));
     const current = document.createElement('span');
     current.textContent = `第 ${level} 关`;
@@ -607,70 +602,6 @@ export function mountEditor(
     }
   }
 
-  function settingsPane(): HTMLDivElement {
-    const pane = document.createElement('div');
-    pane.className = 'settings';
-    pane.append(hapticPane());
-    return pane;
-  }
-
-  function hapticPane(): HTMLDivElement {
-    const box = document.createElement('div');
-    box.className = 'haptic-tune';
-    const title = document.createElement('p');
-    title.className = 'panel-title';
-    title.textContent = '震动';
-    box.append(title);
-    const kinds: HapticKind[] = ['grab', 'hit', 'clear'];
-    for (const kind of kinds) box.append(hapticRow(kind));
-    const reset = button('恢复默认', () => {
-      resetHapticFeel();
-      render();
-    });
-    box.append(reset);
-    return box;
-  }
-
-  function hapticRow(kind: HapticKind): HTMLDivElement {
-    const row = document.createElement('div');
-    row.className = 'haptic-row';
-    const name = document.createElement('span');
-    name.textContent = hapticLabel(kind);
-    const feel = hapticFeel()[kind];
-    const intensity = tuneSlider('强度', feel.intensity, (value) => {
-      setHapticPair(kind, { intensity: value, sharpness: hapticFeel()[kind].sharpness });
-    });
-    const sharpness = tuneSlider('锐度', feel.sharpness, (value) => {
-      setHapticPair(kind, { intensity: hapticFeel()[kind].intensity, sharpness: value });
-    });
-    const head = document.createElement('div');
-    head.className = 'haptic-head';
-    head.append(name, button('试', () => pulseHaptic(kind)));
-    row.append(head, intensity, sharpness);
-    return row;
-  }
-
-  function tuneSlider(name: string, value: number, onInput: (value: number) => void): HTMLLabelElement {
-    const node = document.createElement('label');
-    node.className = 'editor-slider';
-    const caption = document.createElement('span');
-    caption.textContent = `${name} ${value.toFixed(2)}`;
-    const input = document.createElement('input');
-    input.type = 'range';
-    input.min = '0';
-    input.max = '1';
-    input.step = '0.01';
-    input.value = String(value);
-    input.addEventListener('input', () => {
-      const next = Number(input.value);
-      caption.textContent = `${name} ${next.toFixed(2)}`;
-      onInput(next);
-    });
-    input.addEventListener('pointerdown', (event) => event.stopPropagation());
-    node.append(caption, input);
-    return node;
-  }
-
   function button(text: string, onClick: () => void, pressed = false): HTMLButtonElement {
     const node = document.createElement('button');
     node.type = 'button';
@@ -824,11 +755,6 @@ export function mountEditor(
     if (mode === 'edit') return;
     void open(level);
   };
-
-  document.getElementById('hud-settings')?.addEventListener('click', () => {
-    settingsOpen = !settingsOpen;
-    render();
-  });
 
   const canvas = document.querySelector('#stage canvas');
   if (!(canvas instanceof HTMLCanvasElement)) return { advance, replay };

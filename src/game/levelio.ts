@@ -7,6 +7,27 @@ import type { RingConnector } from './board';
 
 export const LEVEL_COUNT = 5;
 
+let bundledLevels: Record<string, Board> = {};
+
+/** Called once at startup with the JSON packed by Vite. Tests leave this empty. */
+export function usePackedLevels(levels: Record<string, Board>): void {
+  bundledLevels = levels;
+}
+
+function bundledBoard(index: number): Board | undefined {
+  const entry = Object.entries(bundledLevels).find(([file]) => file.endsWith(`/${index}.json`));
+  return entry?.[1];
+}
+
+function bundledCount(): number {
+  let count = 0;
+  for (let n = 1; n <= 99; n += 1) {
+    if (!bundledBoard(n)) break;
+    count = n;
+  }
+  return count;
+}
+
 export const PALETTE = [0x3aa8ff, 0x3dcc73, 0xff564c, 0xff8a2a, 0xa86bff, 0xf2c14e];
 
 export function defaultOuter(): number {
@@ -108,10 +129,7 @@ export function makeRing(board: Board): RingBody {
   };
 }
 
-export async function loadLevel(index: number): Promise<Board> {
-  const response = await fetch(`./levels/${index}.json`);
-  if (!response.ok) return emptyBoard();
-  const data = (await response.json()) as Board;
+function normalizeLevel(data: Board): Board {
   data.rings ??= [];
   data.bars ??= [];
   data.pins ??= [];
@@ -120,6 +138,19 @@ export async function loadLevel(index: number): Promise<Board> {
   for (const ring of data.rings) ring.connectors ??= [];
   stripHandlePins(data);
   return data;
+}
+
+export async function loadLevel(index: number): Promise<Board> {
+  if (import.meta.env.DEV) {
+    const response = await fetch(`./levels/${index}.json`);
+    if (response.ok) {
+      const type = response.headers.get('content-type') ?? '';
+      if (type.includes('json')) return normalizeLevel((await response.json()) as Board);
+    }
+  }
+  const packed = bundledBoard(index);
+  if (!packed) return emptyBoard();
+  return normalizeLevel(structuredClone(packed));
 }
 
 function claspReach(owner: RingBody, stem: number): { band: number; bend: number; reach: number } {
@@ -296,15 +327,19 @@ export function centerBoard(board: Board): void {
   syncPins(board);
 }
 
-/** How many `public/levels/N.json` files answer, in order from 1. */
+/** How many levels ship in order from 1. The phone build uses the files packed into the app. */
 export async function fetchLevelCount(): Promise<number> {
-  let count = 0;
-  for (let n = 1; n <= 99; n += 1) {
-    const response = await fetch(`./levels/${n}.json`);
-    if (!response.ok) break;
-    count = n;
+  if (import.meta.env.DEV) {
+    let count = 0;
+    for (let n = 1; n <= 99; n += 1) {
+      const response = await fetch(`./levels/${n}.json`);
+      const type = response.headers.get('content-type') ?? '';
+      if (!response.ok || !type.includes('json')) break;
+      count = n;
+    }
+    if (count > 0) return count;
   }
-  return Math.max(count, 1);
+  return Math.max(bundledCount(), 1);
 }
 
 export async function createLevel(): Promise<number> {

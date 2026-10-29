@@ -20,8 +20,11 @@ import { applyNativeClass, applySafeAreaCssVars } from './adapt/safeArea';
 import { createRenderer, resizeToDesign } from './create-renderer';
 import { haptics } from './utils/haptics';
 import { mountPlay } from './game/play';
+import { packedLevels } from './game/packedLevels';
+import { usePackedLevels } from './game/levelio';
 import { mountEditor } from './game/editor';
 import { mountPlaySession } from './game/playSession';
+import { mountPhoneSettings } from './game/phoneSettings';
 import { mountResult } from './game/result';
 
 const shell = document.getElementById('shell')!;
@@ -51,6 +54,8 @@ function setLog(text: string): void {
 }
 
 async function boot(): Promise<void> {
+  usePackedLevels(packedLevels);
+  if (!document.body.classList.contains('page-editor')) mountPhoneSettings();
   applyNativeClass();
 
   const native = Capacitor.isNativePlatform();

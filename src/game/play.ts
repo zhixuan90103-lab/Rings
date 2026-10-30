@@ -223,6 +223,9 @@ export function mountPlay(options: {
   let last = performance.now();
 
   const raycaster = new THREE.Raycaster();
+  const rayOrigin = new THREE.Vector3();
+  const rayDir = new THREE.Vector3();
+  const pickMeshes: THREE.Object3D[] = [];
   let selectedId: string | null = null;
   const halo = new THREE.Mesh(
     new THREE.RingGeometry(0.82, 1, 64),
@@ -573,10 +576,14 @@ export function mountPlay(options: {
   }
 
   function pickByRay(world: { x: number; y: number }): { kind: 'ring'; id: string } | { kind: 'bar'; id: string } | null {
-    const dir = new THREE.Vector3();
-    camera.getWorldDirection(dir);
-    raycaster.set(new THREE.Vector3(world.x, world.y, camera.position.z), dir);
-    const meshes = views.filter((view) => !view.falling).map((view) => view.mesh);
+    camera.getWorldDirection(rayDir);
+    rayOrigin.set(world.x, world.y, camera.position.z);
+    raycaster.set(rayOrigin, rayDir);
+    pickMeshes.length = 0;
+    for (const view of views) {
+      if (!view.falling) pickMeshes.push(view.mesh);
+    }
+    const meshes = pickMeshes;
     const hits = raycaster.intersectObjects(meshes, true);
     if (hits.length > 0) {
       let node: THREE.Object3D | null = hits[0].object;
@@ -1280,11 +1287,17 @@ export function mountPlay(options: {
     easeCamera(dt);
     const viewBottom = camera.position.y - viewSize().h / 2 / Math.max(camera.zoom, 1e-4);
     stepShatters(shatters, viewBottom - SHATTER.chip, dt);
-    shatters = shatters.filter((shatter) => {
-      if (!shatter.dead) return true;
-      disposeShatter(shatter);
-      return false;
-    });
+    let aliveShatters = 0;
+    for (let i = 0; i < shatters.length; i++) {
+      const shatter = shatters[i];
+      if (shatter.dead) {
+        disposeShatter(shatter);
+        continue;
+      }
+      shatters[aliveShatters] = shatter;
+      aliveShatters += 1;
+    }
+    shatters.length = aliveShatters;
     feedback.step(dt);
     const stamp = chromeStamp();
     if (stamp !== chromeKey) {

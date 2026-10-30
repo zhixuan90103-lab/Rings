@@ -4,8 +4,10 @@ import { disposeSparkBurst, makeSparkBurst, stepSparkBurst, type SparkBurst } fr
 
 const GLOW = 0.16;
 const GLOW_SECONDS = 0.18;
-/** Steady prompt while a lift would remove the piece. A small lift of the piece's own color. */
-const HINT = 0.35;
+/** Emissive of the piece color, added on top. The base color stays. */
+const HINT_GLOW = 0.22;
+/** Extra size at full prompt. It eases with the light. */
+const HINT_SCALE = 0.02;
 /** How long the prompt takes to reach full strength, and to go back out. */
 const HINT_SECONDS = 0.08;
 const RING_REARM = 0.08;
@@ -49,6 +51,7 @@ export function mountFeedback(root: THREE.Object3D) {
   let sparks: SparkBurst[] = [];
   let glow: { mesh: THREE.Object3D; left: number } | null = null;
   let hints: { mesh: THREE.Object3D; level: number; target: number }[] = [];
+  const baseColors = new WeakMap<THREE.MeshStandardMaterial, THREE.Color>();
   const state = { armed: true, free: 0 };
 
   function setGlow(mesh: THREE.Object3D, intensity: number): void {
@@ -61,18 +64,32 @@ export function mountFeedback(root: THREE.Object3D) {
     });
   }
 
-  /** Own-color hint only. Callers skip this while impact owns the mesh. `level` is 0..1. */
+  /** A lighter shade of the piece color. Callers skip this while impact owns the mesh. `level` is 0..1. */
   function paintHint(mesh: THREE.Object3D, level: number): void {
     mesh.traverse((node) => {
       const material = (node as THREE.Mesh).material;
       if (!(material instanceof THREE.MeshStandardMaterial)) return;
-      if (level <= 0) {
-        material.emissiveIntensity = 0;
-        return;
+      let base = baseColors.get(material);
+      if (!base) {
+        base = material.color.clone();
+        baseColors.set(material, base);
       }
-      material.emissive.copy(material.color);
-      material.emissiveIntensity = HINT * level;
+      material.color.copy(base);
+      material.emissive.copy(base);
+      material.emissiveIntensity = level <= 0 ? 0 : HINT_GLOW * level;
     });
+    mesh.scale.setScalar(level <= 0 ? 1 : 1 + HINT_SCALE * level);
+  }
+
+  function compactHints(): void {
+    let alive = 0;
+    for (let i = 0; i < hints.length; i++) {
+      const item = hints[i];
+      if (item.target <= 0 && item.level <= 0) continue;
+      hints[alive] = item;
+      alive += 1;
+    }
+    hints.length = alive;
   }
 
   function hintLevel(mesh: THREE.Object3D): number {
@@ -111,7 +128,7 @@ export function mountFeedback(root: THREE.Object3D) {
       for (const mesh of meshes) {
         if (!hints.some((item) => item.mesh === mesh)) hints.push({ mesh, level: 0, target: 1 });
       }
-      hints = hints.filter((item) => item.target > 0 || item.level > 0);
+      compactHints();
     },
     impact(mesh: THREE.Object3D, at: { x: number; y: number } | null, color: number): void {
       if (at) {
@@ -141,13 +158,19 @@ export function mountFeedback(root: THREE.Object3D) {
         if (glow?.mesh === item.mesh) continue;
         paintHint(item.mesh, item.level);
       }
-      hints = hints.filter((item) => item.target > 0 || item.level > 0);
-      sparks = sparks.filter((burst) => {
-        if (!stepSparkBurst(burst, dt)) return true;
+      compactHints();
+      let alive = 0;
+      for (let i = 0; i < sparks.length; i++) {
+        const burst = sparks[i];
+        if (stepSparkBurst(burst, dt)) {
+          sparks[alive] = burst;
+          alive += 1;
+          continue;
+        }
         root.remove(burst.root);
         disposeSparkBurst(burst);
-        return false;
-      });
+      }
+      sparks.length = alive;
     },
     busy(): boolean {
       return wobbles.busy() || glow !== null || sparks.length > 0 || hints.length > 0;

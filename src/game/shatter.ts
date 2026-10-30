@@ -27,6 +27,8 @@ export const SHATTER = {
   shrinkSeconds: 0.75,
   shrinkFloor: 0.45,
   buckle: 0xc8c7c5,
+  /** Own-color light added on the unchanged chip color. */
+  glow: 0.35,
 } as const;
 
 export type Shatter = {
@@ -47,6 +49,7 @@ export type Shatter = {
 
 const CHIP_POOL = 128;
 const shatterPool: Shatter[] = [];
+const dummy = new THREE.Object3D();
 
 let chipGeometry: THREE.ExtrudeGeometry | null = null;
 
@@ -220,10 +223,13 @@ export function makeShatter(
   const shatter = takeShatter(count);
   const { mesh } = shatter;
   const material = mesh.material;
-  if (material instanceof THREE.MeshStandardMaterial) material.color.setHex(color);
+  if (material instanceof THREE.MeshStandardMaterial) {
+    material.color.setHex(color);
+    material.emissive.setHex(color);
+    material.emissiveIntensity = SHATTER.glow;
+  }
   mesh.count = count;
   mesh.visible = true;
-  const dummy = new THREE.Object3D();
   const { x } = shatter;
   const { y, vx, vy, spin, pitch, roll, theta, scale } = shatter;
   for (let i = 0; i < count; i++) {
@@ -299,8 +305,6 @@ export function shatterShrink(age: number): number {
   const fall = Math.max(0, age - SHATTER.gravityIn * 0.35);
   return Math.max(SHATTER.shrinkFloor, 1 - fall / SHATTER.shrinkSeconds);
 }
-
-const dummy = new THREE.Object3D();
 
 export function stepShatters(shatters: Shatter[], viewBottom: number, dt: number): void {
   for (const shatter of shatters) {

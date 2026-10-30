@@ -27,19 +27,97 @@ function ringSector(ring: RingBody, x: number, y: number): boolean {
 
 const SCALE = PART.scale;
 
-function connectorBox(ring: RingBody): { x: number; y: number; angle: number; length: number; width: number }[] {
+type Box = { x: number; y: number; angle: number; length: number; width: number };
+
+type RingFrame = {
+  key: string;
+  boxes: Box[];
+  arcs: ClaspArc[];
+  samples: { x: number; y: number }[];
+};
+
+const ringFrames = new WeakMap<RingBody, RingFrame>();
+
+function blankBox(): Box {
+  return { x: 0, y: 0, angle: 0, length: 0, width: 0 };
+}
+
+function blankArc(): ClaspArc {
+  return { cx: 0, cy: 0, radius: 0, half: 0, width: 0, mid: 0 };
+}
+
+function blankPoint(): { x: number; y: number } {
+  return { x: 0, y: 0 };
+}
+
+/** One frame per ring. The next pose rewrites the same boxes, arcs, and samples. */
+function ringFrame(ring: RingBody): RingFrame {
+  const key = `${sampleKey(ring)}|${ring.x}|${ring.y}|${ring.theta}`;
+  let frame = ringFrames.get(ring);
+  if (!frame) {
+    frame = { key: '', boxes: [], arcs: [], samples: [] };
+    ringFrames.set(ring, frame);
+  }
+  if (frame.key === key) return frame;
+  frame.key = key;
   const width = ring.outer * PART.bandRatio;
-  return ring.connectors.map((connector) => {
+  frame.boxes.length = ring.connectors.length;
+  frame.arcs.length = ring.connectors.length;
+  for (let i = 0; i < ring.connectors.length; i++) {
+    const connector = ring.connectors[i];
     const metrics = connectorLayout(ring.outer, width, connector.stem);
     const world = ring.theta + connector.angle;
-    return {
-      x: ring.x + Math.cos(world) * metrics.stemDist,
-      y: ring.y + Math.sin(world) * metrics.stemDist,
-      angle: world,
-      length: metrics.stemLen,
-      width: metrics.stemW,
-    };
-  });
+    const box = frame.boxes[i] ?? (frame.boxes[i] = blankBox());
+    box.x = ring.x + Math.cos(world) * metrics.stemDist;
+    box.y = ring.y + Math.sin(world) * metrics.stemDist;
+    box.angle = world;
+    box.length = metrics.stemLen;
+    box.width = metrics.stemW;
+    const arc = frame.arcs[i] ?? (frame.arcs[i] = blankArc());
+    const ox = ring.x + Math.cos(world) * metrics.claspDist;
+    const oy = ring.y + Math.sin(world) * metrics.claspDist;
+    arc.cx = ox + Math.cos(world) * metrics.bend;
+    arc.cy = oy + Math.sin(world) * metrics.bend;
+    arc.radius = metrics.bend;
+    arc.half = metrics.claspLen / 2 / metrics.bend;
+    arc.width = metrics.claspW;
+    arc.mid = Math.atan2(-Math.sin(world), -Math.cos(world));
+  }
+  let n = 0;
+  const take = () => frame.samples[n] ?? (frame.samples[n] = blankPoint());
+  for (const box of frame.boxes) {
+    const steps = 6;
+    for (let ix = 0; ix <= steps; ix++) {
+      for (let iy = 0; iy <= 2; iy++) {
+        const lx = -box.length / 2 + (box.length * ix) / steps;
+        const ly = -box.width / 2 + (box.width * iy) / 2;
+        const c = Math.cos(box.angle);
+        const s = Math.sin(box.angle);
+        const point = take();
+        point.x = box.x + c * lx - s * ly;
+        point.y = box.y + s * lx + c * ly;
+        n += 1;
+      }
+    }
+  }
+  for (const arc of frame.arcs) {
+    for (let i = 0; i <= 8; i++) {
+      const a = arc.mid - arc.half + (2 * arc.half * i) / 8;
+      for (const k of [-0.4, 0, 0.4]) {
+        const radius = arc.radius + arc.width * k;
+        const point = take();
+        point.x = arc.cx + Math.cos(a) * radius;
+        point.y = arc.cy + Math.sin(a) * radius;
+        n += 1;
+      }
+    }
+  }
+  frame.samples.length = n;
+  return frame;
+}
+
+function connectorBox(ring: RingBody): Box[] {
+  return ringFrame(ring).boxes;
 }
 
 type SampleCache = { key: string; local: { x: number; y: number }[]; reach: number };
@@ -354,49 +432,13 @@ export function barHitsRing(bar: BarBody, t: number, ring: RingBody): boolean {
 }
 
 function connectorSamples(ring: RingBody): { x: number; y: number }[] {
-  const out: { x: number; y: number }[] = [];
-  for (const box of connectorBox(ring)) {
-    const n = 6;
-    for (let ix = 0; ix <= n; ix++) {
-      for (let iy = 0; iy <= 2; iy++) {
-        const lx = -box.length / 2 + (box.length * ix) / n;
-        const ly = -box.width / 2 + (box.width * iy) / 2;
-        const c = Math.cos(box.angle);
-        const s = Math.sin(box.angle);
-        out.push({ x: box.x + c * lx - s * ly, y: box.y + s * lx + c * ly });
-      }
-    }
-  }
-  for (const arc of claspArcs(ring)) {
-    for (let i = 0; i <= 8; i++) {
-      const a = arc.mid - arc.half + (2 * arc.half * i) / 8;
-      for (const k of [-0.4, 0, 0.4]) {
-        const radius = arc.radius + arc.width * k;
-        out.push({ x: arc.cx + Math.cos(a) * radius, y: arc.cy + Math.sin(a) * radius });
-      }
-    }
-  }
-  return out;
+  return ringFrame(ring).samples;
 }
 
 type ClaspArc = { cx: number; cy: number; radius: number; half: number; width: number; mid: number };
 
 function claspArcs(ring: RingBody): ClaspArc[] {
-  const width = ring.outer * PART.bandRatio;
-  return ring.connectors.map((connector) => {
-    const metrics = connectorLayout(ring.outer, width, connector.stem);
-    const world = ring.theta + connector.angle;
-    const ox = ring.x + Math.cos(world) * metrics.claspDist;
-    const oy = ring.y + Math.sin(world) * metrics.claspDist;
-    return {
-      cx: ox + Math.cos(world) * metrics.bend,
-      cy: oy + Math.sin(world) * metrics.bend,
-      radius: metrics.bend,
-      half: metrics.claspLen / 2 / metrics.bend,
-      width: metrics.claspW,
-      mid: Math.atan2(-Math.sin(world), -Math.cos(world)),
-    };
-  });
+  return ringFrame(ring).arcs;
 }
 
 function inClasp(arc: ClaspArc, x: number, y: number): boolean {
@@ -417,21 +459,27 @@ export const CLASP_SEAT = 0.07;
  */
 const CORE_SLACK = 0.012;
 
-function coreBox(box: { x: number; y: number; angle: number; length: number; width: number }) {
-  return {
-    ...box,
-    // Straight stem, not the clasp arc. 0.72 keeps a seated stem locked; the arc uses 0.78.
-    length: Math.max(0.02, box.length * 0.72),
-    width: Math.max(0.02, box.width * 0.62),
-  };
+const coreBoxScratch = blankBox();
+const coreArcScratch = blankArc();
+
+function coreBox(box: Box): Box {
+  coreBoxScratch.x = box.x;
+  coreBoxScratch.y = box.y;
+  coreBoxScratch.angle = box.angle;
+  // Straight stem, not the clasp arc. 0.72 keeps a seated stem locked; the arc uses 0.78.
+  coreBoxScratch.length = Math.max(0.02, box.length * 0.72);
+  coreBoxScratch.width = Math.max(0.02, box.width * 0.62);
+  return coreBoxScratch;
 }
 
 function coreArc(arc: ClaspArc): ClaspArc {
-  return {
-    ...arc,
-    half: Math.max(0.04, arc.half * 0.78),
-    width: arc.width * 0.62,
-  };
+  coreArcScratch.cx = arc.cx;
+  coreArcScratch.cy = arc.cy;
+  coreArcScratch.radius = arc.radius;
+  coreArcScratch.mid = arc.mid;
+  coreArcScratch.half = Math.max(0.04, arc.half * 0.78);
+  coreArcScratch.width = arc.width * 0.62;
+  return coreArcScratch;
 }
 
 function pointBandDepth(ring: RingBody, x: number, y: number): number {
@@ -486,17 +534,26 @@ export function claspCenterDistance(owner: RingBody, other: RingBody): number {
 export type ClaspPose = { kind: 'owner' | 'captive'; dist: number; depth: number };
 
 /** One pose per clasp this drag can change. Owner clasps first, then clasps on other rings. */
+const poseLists: ClaspPose[][] = [[], []];
+let poseList = 0;
+
 export function claspPoses(board: Board, ring: RingBody): ClaspPose[] {
-  const poses: ClaspPose[] = [];
+  const poses = poseLists[poseList];
+  poseList ^= 1;
+  let count = 0;
+  const slot = (kind: ClaspPose['kind'], dist: number, depth: number) => {
+    const item = poses[count] ?? (poses[count] = { kind, dist, depth });
+    item.kind = kind;
+    item.dist = dist;
+    item.depth = depth;
+    count += 1;
+  };
   for (const other of board.rings) {
     if (other.id === ring.id) continue;
-    if (ring.connectors.length > 0) {
-      poses.push({ kind: 'owner', dist: claspCenterDistance(ring, other), depth: connectorCoreDepth(ring, other) });
-    }
-    if (other.connectors.length > 0) {
-      poses.push({ kind: 'captive', dist: claspCenterDistance(other, ring), depth: connectorCoreDepth(other, ring) });
-    }
+    if (ring.connectors.length > 0) slot('owner', claspCenterDistance(ring, other), connectorCoreDepth(ring, other));
+    if (other.connectors.length > 0) slot('captive', claspCenterDistance(other, ring), connectorCoreDepth(other, ring));
   }
+  poses.length = count;
   return poses;
 }
 

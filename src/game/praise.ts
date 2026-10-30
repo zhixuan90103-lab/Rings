@@ -102,6 +102,22 @@ export function placePraise(x: number, y: number, text: string): { x: number; y:
   return { x: cx, y: below, below: true };
 }
 
+const praiseNodes: HTMLDivElement[] = [];
+
+function takePraiseNode(host: HTMLElement): HTMLDivElement {
+  const idle = praiseNodes.find((node) => !node.isConnected);
+  if (idle) return idle;
+  const node = document.createElement('div');
+  node.addEventListener('animationend', (event) => {
+    if (event.target !== node) return;
+    if (event.animationName !== 'praise-rise' && event.animationName !== 'praise-drop') return;
+    node.remove();
+  });
+  praiseNodes.push(node);
+  host.append(node);
+  return node;
+}
+
 export function showPraise(x: number, y: number, rank: number): void {
   const host = document.getElementById('ui-root');
   if (!host || rank <= 0) return;
@@ -111,8 +127,8 @@ export function showPraise(x: number, y: number, rank: number): void {
   const spot = placePraise(x, y, line.text);
   const word = wordLayout(line.text);
 
-  const node = document.createElement('div');
-  node.className = spot.below ? 'praise is-below' : 'praise';
+  const node = takePraiseNode(host);
+  node.className = '';
   node.style.left = `${spot.x}px`;
   node.style.top = `${spot.y}px`;
   node.innerHTML = `<svg viewBox="0 0 ${word.viewW} ${word.viewH}" width="${word.drawW}" height="${word.drawH}" aria-hidden="true">
@@ -126,10 +142,7 @@ export function showPraise(x: number, y: number, rank: number): void {
     <text x="${word.viewW / 2}" y="62" text-anchor="middle"
       fill="url(#${id})" stroke="#ffffff" stroke-width="13" stroke-linejoin="round" paint-order="stroke">${line.text}</text>
   </svg>`;
-  host.append(node);
-  node.addEventListener('animationend', (event) => {
-    if (event.target !== node) return;
-    if (event.animationName !== 'praise-rise' && event.animationName !== 'praise-drop') return;
-    node.remove();
-  });
+  if (!node.isConnected) host.append(node);
+  void node.offsetWidth;
+  node.className = spot.below ? 'praise is-below' : 'praise';
 }

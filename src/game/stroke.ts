@@ -13,17 +13,19 @@ export type Aim = {
   id: string | null;
   along: number;
   cross: number;
+  /** The piece under the finger cannot move, so leaving it must play the directional wobble. */
+  refuse: boolean;
 };
 
 export type AimStep =
   | { type: 'idle' }
-  | { type: 'release'; id: string }
+  | { type: 'release'; id: string; from: AimPoint | null; refuse: boolean }
   | { type: 'stuck'; hit: IntentHit; along: number }
   | { type: 'watch' }
   | { type: 'lock'; hit: IntentHit; from: AimPoint };
 
 export function emptyAim(): Aim {
-  return { at: null, id: null, along: 0, cross: 0 };
+  return { at: null, id: null, along: 0, cross: 0, refuse: false };
 }
 
 function liveReady(hit: IntentHit, along: number, cross: number, clear: number): boolean {
@@ -36,13 +38,16 @@ function liveReady(hit: IntentHit, along: number, cross: number, clear: number):
 export function stepAim(board: Board, aim: Aim, hit: IntentHit | null, world: AimPoint, clear: number): { aim: Aim; step: AimStep } {
   if (!hit) {
     const previous = aim.id;
-    return { aim: { ...emptyAim(), at: world }, step: previous ? { type: 'release', id: previous } : { type: 'idle' } };
+    return {
+      aim: { ...emptyAim(), at: world },
+      step: previous ? { type: 'release', id: previous, from: aim.at, refuse: aim.refuse } : { type: 'idle' },
+    };
   }
   if (!hit.neg && !hit.pos) {
     const arrived = aim.id !== hit.id;
     const along = !arrived && aim.at ? strokeTravel(board, hit, aim.at.x, aim.at.y, world.x, world.y).along : 0;
-    const next: Aim = { at: world, id: hit.id, along: 0, cross: 0 };
-    if (arrived && aim.id) return { aim: next, step: { type: 'release', id: aim.id } };
+    const next: Aim = { at: world, id: hit.id, along: 0, cross: 0, refuse: true };
+    if (arrived && aim.id) return { aim: next, step: { type: 'release', id: aim.id, from: aim.at, refuse: aim.refuse } };
     return { aim: next, step: { type: 'stuck', hit, along } };
   }
   const switched = aim.id !== null && aim.id !== hit.id;
@@ -53,9 +58,12 @@ export function stepAim(board: Board, aim: Aim, hit: IntentHit | null, world: Ai
     along += travel.along;
     cross += travel.cross;
   }
-  const next: Aim = { at: world, id: hit.id, along, cross };
+  const next: Aim = { at: world, id: hit.id, along, cross, refuse: false };
   if (liveReady(hit, along, cross, clear) && aim.at && aim.id === hit.id) {
     return { aim: emptyAim(), step: { type: 'lock', hit, from: aim.at } };
   }
-  return { aim: next, step: switched ? { type: 'release', id: aim.id as string } : { type: 'watch' } };
+  return {
+    aim: next,
+    step: switched ? { type: 'release', id: aim.id as string, from: aim.at, refuse: aim.refuse } : { type: 'watch' },
+  };
 }

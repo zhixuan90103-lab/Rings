@@ -1,15 +1,5 @@
 import * as THREE from 'three';
-import {
-  BAR_RECOIL_WORLD,
-  CLICK_RECOIL_SCALE,
-  RING_RECOIL_MAX,
-  beginRecoil,
-  heldSign,
-  releaseHold,
-  stepRecoil,
-  wobbleOffset,
-  type Recoil,
-} from './recoil';
+import { mountWobbles } from './wobbles';
 import { disposeSparkBurst, makeSparkBurst, stepSparkBurst, type SparkBurst } from './sparks';
 
 const GLOW = 0.16;
@@ -53,11 +43,9 @@ export function dragEffect(notice: DragNotice): DragEffect {
   return { type: 'free', armed: notice.armed, free: notice.free };
 }
 
-type Pose = { id: string; kind: 'ring' | 'bar'; body: Recoil };
-
-/** Wobble, hold, glow, and sparks. None of it writes the rule pose. */
+/** Glow, sparks, and the per-piece wobble list. None of it writes the rule pose. */
 export function mountFeedback(root: THREE.Object3D) {
-  let pose: Pose | null = null;
+  const wobbles = mountWobbles();
   let sparks: SparkBurst[] = [];
   let glow: { mesh: THREE.Object3D; left: number } | null = null;
   let hints: { mesh: THREE.Object3D; level: number; target: number }[] = [];
@@ -98,61 +86,23 @@ export function mountFeedback(root: THREE.Object3D) {
     else setGlow(mesh, 0);
   }
 
-  function clearPose(): void {
-    pose = null;
-  }
-
   function arm(id?: string): void {
     state.armed = true;
     state.free = 0;
-    if (!id || pose?.id === id) clearPose();
-  }
-
-  function clearIf(id: string): void {
-    if (pose?.id === id) pose = null;
-  }
-
-  function barMax(length: number): number {
-    return BAR_RECOIL_WORLD / Math.max(length, 1e-4);
-  }
-
-  function play(id: string, kind: 'ring' | 'bar', rejected: number, max: number, fromClick: boolean): void {
-    if (!fromClick && pose?.id === id) return;
-    const body = beginRecoil(rejected, fromClick ? max * CLICK_RECOIL_SCALE : max);
-    if (body) pose = { id, kind, body };
+    wobbles.clear(id);
   }
 
   return {
     state,
-    holding(id: string): boolean {
-      return pose?.id === id && pose.body.hold === true;
-    },
-    holdSign(id: string): number {
-      if (pose?.id !== id || !pose.body.hold) return 0;
-      return pose.body.sign;
-    },
-    offset(id: string): number {
-      if (pose?.id !== id) return 0;
-      return wobbleOffset(pose.body);
-    },
-    holdRing(id: string, rejected: number): void {
-      const sign = heldSign(pose?.id === id && pose.body.hold ? pose.body.sign : null, rejected);
-      if (sign === null || (pose?.id === id && pose.body.hold)) return;
-      const body = beginRecoil(sign, RING_RECOIL_MAX, true);
-      if (body) pose = { id, kind: 'ring', body };
-    },
-    stopBar(id: string, rejected: number, length: number): void {
-      play(id, 'bar', rejected, barMax(length), false);
-    },
-    click(id: string, kind: 'ring' | 'bar', length: number): void {
-      const max = kind === 'ring' ? RING_RECOIL_MAX : barMax(length);
-      play(id, kind, 1, max, true);
-    },
-    releaseHold(): void {
-      if (pose?.body.hold) releaseHold(pose.body);
-    },
-    clearPose,
-    clearIf,
+    holding: wobbles.holding,
+    holdSign: wobbles.holdSign,
+    offset: wobbles.offset,
+    holdRing: wobbles.holdRing,
+    stopBar: wobbles.stopBar,
+    click: wobbles.click,
+    releaseHold: wobbles.release,
+    clearPose: () => wobbles.clear(),
+    clearIf: (id: string) => wobbles.clear(id),
     arm,
     /** Pieces a lift would remove. The light eases in and out over `HINT_SECONDS`. */
     hint(meshes: THREE.Object3D[]): void {
@@ -173,7 +123,7 @@ export function mountFeedback(root: THREE.Object3D) {
       glow = { mesh, left: GLOW_SECONDS };
     },
     step(dt: number): void {
-      if (pose && stepRecoil(pose.body, dt)) pose = null;
+      wobbles.step(dt);
       if (glow) {
         glow.left -= dt;
         setGlow(glow.mesh, Math.max(0, glow.left / GLOW_SECONDS) * GLOW);
@@ -199,10 +149,10 @@ export function mountFeedback(root: THREE.Object3D) {
       });
     },
     busy(): boolean {
-      return pose !== null || glow !== null || sparks.length > 0 || hints.length > 0;
+      return wobbles.busy() || glow !== null || sparks.length > 0 || hints.length > 0;
     },
     clear(): void {
-      clearPose();
+      wobbles.clear();
       for (const burst of sparks) {
         root.remove(burst.root);
         disposeSparkBurst(burst);

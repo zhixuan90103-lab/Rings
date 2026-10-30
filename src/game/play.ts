@@ -197,6 +197,7 @@ export function mountPlay(options: {
   let seekId: string | null = null;
   let seekAlong = 0;
   let seekCross = 0;
+  let seekRefuse = false;
   /** An operable piece locked by the operate stroke. Touching another piece does not retarget. */
   let choiceLocked = false;
   let pointerId: number | null = null;
@@ -595,7 +596,7 @@ export function mountPlay(options: {
     frameApplied = drag.kind === 'ring' ? signedDelta(before, after) : after - before;
     if (Math.abs(frameApplied) >= 1e-4) {
       dragMoved = true;
-      if (feedback.holding(drag.id)) feedback.clearPose();
+      if (feedback.holding(drag.id)) feedback.clearIf(drag.id);
     }
     return rejected;
   }
@@ -655,12 +656,13 @@ export function mountPlay(options: {
     seekId = null;
     seekAlong = 0;
     seekCross = 0;
+    seekRefuse = false;
     choiceLocked = false;
     nudgeSign = 0;
     nudgeBroken = false;
     pointerId = null;
     lastStamp = -1;
-    if (heldId && feedback.holding(heldId)) feedback.releaseHold();
+    if (heldId && feedback.holding(heldId)) feedback.releaseHold(heldId);
     else if (!feedback.busy()) feedback.clearPose();
     syncMeshes();
   }
@@ -801,7 +803,7 @@ export function mountPlay(options: {
     const sign = Math.abs(along) > 1e-4 ? along : 1;
     if (left.kind === 'ring') {
       feedback.holdRing(left.id, sign);
-      if (feedback.holding(left.id)) feedback.releaseHold();
+      if (feedback.holding(left.id)) feedback.releaseHold(left.id);
     } else {
       const bar = barById(board, left.id);
       const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
@@ -815,6 +817,7 @@ export function mountPlay(options: {
     seekId = null;
     seekAlong = 0;
     seekCross = 0;
+    seekRefuse = false;
     nudgeSign = 0;
     nudgeBroken = false;
     syncMeshes();
@@ -822,7 +825,7 @@ export function mountPlay(options: {
   }
 
   function aimNow(): Aim {
-    return { at: seekAt, id: seekId, along: seekAlong, cross: seekCross };
+    return { at: seekAt, id: seekId, along: seekAlong, cross: seekCross, refuse: seekRefuse };
   }
 
   function storeAim(aim: Aim): void {
@@ -830,6 +833,21 @@ export function mountPlay(options: {
     seekId = aim.id;
     seekAlong = aim.along;
     seekCross = aim.cross;
+    seekRefuse = aim.refuse;
+  }
+
+  function refuseLeave(id: string, from: { x: number; y: number } | null, to: { x: number; y: number }): void {
+    const ring = ringById(board, id);
+    const bar = barById(board, id);
+    const kind = ring ? 'ring' : 'bar';
+    const along = from ? strokeTravel(board, { kind, id, place: 'solid', neg: false, pos: false, near: 0, ray: false }, from.x, from.y, to.x, to.y).along : 0;
+    const sign = Math.abs(along) > 1e-4 ? along : 1;
+    if (ring) {
+      feedback.holdRing(id, sign);
+      if (feedback.holding(id)) feedback.releaseHold(id);
+    } else if (bar) {
+      feedback.stopBar(id, sign, Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) || 1);
+    }
   }
 
   /** Follow the piece under the finger. Lock only when the stroke operates that piece. */
@@ -838,7 +856,10 @@ export function mountPlay(options: {
     const stepped = stepAim(board, aimNow(), winnerAt(world), world, clear);
     storeAim(stepped.aim);
     const step = stepped.step;
-    if (step.type === 'release' && feedback.holding(step.id)) feedback.releaseHold();
+    if (step.type === 'release') {
+      if (step.refuse) refuseLeave(step.id, step.from, world);
+      else if (feedback.holding(step.id)) feedback.releaseHold(step.id);
+    }
     if (step.type === 'stuck') {
       if (step.hit.kind === 'ring') feedback.holdRing(step.hit.id, step.along);
       else {
@@ -852,7 +873,7 @@ export function mountPlay(options: {
     const next = beginDrag(board, step.hit, step.from.x, step.from.y);
     if (!next) return false;
     seeking = false;
-    storeAim({ at: null, id: null, along: 0, cross: 0 });
+    storeAim({ at: null, id: null, along: 0, cross: 0, refuse: false });
     drag = next;
     nudgeSign = 0;
     nudgeBroken = false;
@@ -910,6 +931,7 @@ export function mountPlay(options: {
         seekId = null;
         seekAlong = 0;
         seekCross = 0;
+        seekRefuse = false;
         commitSeek(last);
         return;
       }
@@ -1059,14 +1081,15 @@ export function mountPlay(options: {
     seekId = null;
     seekAlong = 0;
     seekCross = 0;
+    seekRefuse = false;
     choiceLocked = false;
     nudgeSign = 0;
     nudgeBroken = false;
     pointerId = null;
     const stayed = views.some((view) => view.id === clicked.id && !view.falling);
     const held = feedback.holding(clicked.id);
-    if (cancel || !stayed) feedback.clearPose();
-    else if (held) feedback.releaseHold();
+    if (cancel || !stayed) feedback.clearIf(clicked.id);
+    else if (held) feedback.releaseHold(clicked.id);
     else if (!moved) {
       const bar = barById(board, clicked.id);
       const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;

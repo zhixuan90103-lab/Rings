@@ -101,6 +101,7 @@ export function mountFeedback(root: THREE.Object3D) {
     stopBar: wobbles.stopBar,
     click: wobbles.click,
     releaseHold: wobbles.release,
+    releaseHeld: wobbles.releaseHeld,
     clearPose: () => wobbles.clear(),
     clearIf: (id: string) => wobbles.clear(id),
     arm,

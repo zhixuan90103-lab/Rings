@@ -34,7 +34,7 @@ import { LEVELS } from './levels';
 import level1 from '../../public/levels/1.json';
 import { dragEffect, mountFeedback } from './feedback';
 import { breakPraise, clearPoints, freshPraise, notePraiseClear, showPraise, type PraiseCombo } from './praise';
-import { strikePoint } from './volume';
+import { barCovers, strikePoint } from './volume';
 import { pulseHaptic } from './hapticFeel';
 import {
   INTENT_CLEAR,
@@ -48,7 +48,7 @@ import {
   sleeveGap,
   type IntentHit,
 } from './intent';
-import { stepAim, type Aim } from './stroke';
+import { seekTarget, stepAim, type Aim } from './stroke';
 import { emptyHand, handCamera, handDown, handUp, type Hand } from './hand';
 import {
   boardBounds,
@@ -198,8 +198,9 @@ export function mountPlay(options: {
   let seekAlong = 0;
   let seekCross = 0;
   let seekRefuse = false;
-  /** An operable piece locked by the operate stroke. Touching another piece does not retarget. */
-  let choiceLocked = false;
+  let seekHit: IntentHit | null = null;
+  /** Rings that already left their outer contour this stroke. A later sample must not tighten them again. */
+  let loosened = new Set<string>();
   let pointerId: number | null = null;
   const fingers = new Map<number, { dx: number; dy: number }>();
   let hand: Hand = emptyHand();
@@ -641,8 +642,15 @@ export function mountPlay(options: {
     if (!hit) {
       if (!decided) return;
       pending = null;
+      const captured = pointerId;
       pointerId = null;
-      if (pointerId !== null && canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
+      if (captured !== null && canvas.hasPointerCapture(captured)) canvas.releasePointerCapture(captured);
+      return;
+    }
+    if (!hit.neg && !hit.pos) {
+      pending = null;
+      seeking = true;
+      commitSeek(last);
       return;
     }
     const next = beginDrag(board, hit, held.x0, held.y0);
@@ -652,7 +660,6 @@ export function mountPlay(options: {
     nudgeSign = 0;
     nudgeBroken = false;
     dragMoved = false;
-    choiceLocked = hit.neg || hit.pos;
     feedback.arm(hit.id);
     let rejected = 0;
     for (const sample of held.samples.slice(1)) rejected = applySample(sample);
@@ -673,20 +680,19 @@ export function mountPlay(options: {
     drag = null;
     dragMoved = false;
     pending = null;
-    const heldId = seekId;
     seeking = false;
     seekAt = null;
     seekId = null;
     seekAlong = 0;
     seekCross = 0;
     seekRefuse = false;
-    choiceLocked = false;
+    seekHit = null;
     nudgeSign = 0;
     nudgeBroken = false;
     pointerId = null;
     lastStamp = -1;
-    if (heldId && feedback.holding(heldId)) feedback.releaseHold(heldId);
-    else if (!feedback.busy()) feedback.clearPose();
+    feedback.releaseHeld();
+    loosened.clear();
     syncMeshes();
   }
 
@@ -776,6 +782,7 @@ export function mountPlay(options: {
     if (step.effect !== 'begin-piece') return;
     if (hold || pointerId !== null) return;
     const world = designToWorld(point.dx, point.dy);
+    loosened = new Set();
     const ray = pickByRay(world);
     const hits = listCandidates(board, world.x, world.y, intentWorld(INTENT_PAD, camera.zoom), ray ? [ray.id] : []);
     pointerId = event.pointerId;
@@ -786,10 +793,14 @@ export function mountPlay(options: {
       return;
     }
     pulseHaptic('grab');
-    pending = { hits, x0: world.x, y0: world.y, dx: point.dx, dy: point.dy, samples: [{ x: world.x, y: world.y }] };
-    if (chooseIntent(board, hits, world.x, world.y, world.x, world.y, false, intentWorld(INTENT_CLEAR, camera.zoom))) {
-      lockPending(true);
+    const pressed = chooseIntent(board, hits, world.x, world.y, world.x, world.y, false, intentWorld(INTENT_CLEAR, camera.zoom));
+    if (pressed && !pressed.neg && !pressed.pos) {
+      seeking = true;
+      commitSeek(world);
+      return;
     }
+    pending = { hits, x0: world.x, y0: world.y, dx: point.dx, dy: point.dy, samples: [{ x: world.x, y: world.y }] };
+    if (pressed) lockPending(true);
   }
 
   function dragPose(current: Drag): number {
@@ -813,51 +824,30 @@ export function mountPlay(options: {
     return fresh.length > 0 ? fresh : [event];
   }
 
+  /** Outer circle only. A handle past that circle is already outside the contour. */
+  function insideContour(id: string, world: { x: number; y: number }): boolean {
+    const ring = ringById(board, id);
+    if (ring) return Math.hypot(world.x - ring.x, world.y - ring.y) <= ring.outer;
+    const bar = barById(board, id);
+    return bar ? barCovers(bar, world.x, world.y) : false;
+  }
+
+  /**
+   * Piece under the finger while still choosing.
+   * An operable piece stays until another hit leads, so a near tie does not wipe its travel.
+   * An immovable ring stays tight only inside its outer circle, including the hole.
+   * The stem is not that circle: once the finger is past the outer radius, release even if the stem still hits.
+   */
   function winnerAt(world: { x: number; y: number }): IntentHit | null {
+    if (seekId && seekRefuse && seekHit && seekHit.id === seekId && insideContour(seekId, world)) return seekHit;
     const ray = pickByRay(world);
     const clear = intentWorld(INTENT_CLEAR, camera.zoom);
     const hits = listCandidates(board, world.x, world.y, 0, ray ? [ray.id] : []);
-    return chooseIntent(board, hits, world.x, world.y, world.x, world.y, true, clear);
-  }
-
-  /** Reaching another piece gives the previous one back and keeps choosing. */
-  function handoffSeek(world: { x: number; y: number }): boolean {
-    if (!drag || choiceLocked) return false;
-    const hit = winnerAt(world);
-    if (!hit || hit.id === drag.id) return false;
-    const left = drag;
-    const from = { x: left.x, y: left.y };
-    cancelDrag(board, left);
-    const along = strokeTravel(
-      board,
-      { kind: left.kind, id: left.id, place: 'solid', neg: true, pos: true, near: 0, ray: false },
-      from.x,
-      from.y,
-      world.x,
-      world.y,
-    ).along;
-    const sign = Math.abs(along) > 1e-4 ? along : 1;
-    if (left.kind === 'ring') {
-      feedback.holdRing(left.id, sign);
-      if (feedback.holding(left.id)) feedback.releaseHold(left.id);
-    } else {
-      const bar = barById(board, left.id);
-      const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
-      feedback.stopBar(left.id, sign, length);
-    }
-    drag = null;
-    dragMoved = false;
-    choiceLocked = false;
-    seeking = true;
-    seekAt = null;
-    seekId = null;
-    seekAlong = 0;
-    seekCross = 0;
-    seekRefuse = false;
-    nudgeSign = 0;
-    nudgeBroken = false;
-    syncMeshes();
-    return true;
+    const kept = seekId ? (hits.find((hit) => hit.id === seekId) ?? null) : null;
+    const others = seekId && seekRefuse ? hits.filter((hit) => hit.id !== seekId) : hits;
+    const lead = chooseIntent(board, hits, world.x, world.y, world.x, world.y, false, clear);
+    const rest = chooseIntent(board, others, world.x, world.y, world.x, world.y, true, clear);
+    return seekTarget(seekId, seekRefuse, seekId ? insideContour(seekId, world) : false, kept, lead, rest);
   }
 
   function aimNow(): Aim {
@@ -878,11 +868,22 @@ export function mountPlay(options: {
     const kind = ring ? 'ring' : 'bar';
     const along = from ? strokeTravel(board, { kind, id, place: 'solid', neg: false, pos: false, near: 0, ray: false }, from.x, from.y, to.x, to.y).along : 0;
     const sign = Math.abs(along) > 1e-4 ? along : 1;
+    loosened.add(id);
     if (ring) {
-      feedback.holdRing(id, sign);
-      if (feedback.holding(id)) feedback.releaseHold(id);
+      if (!feedback.holding(id)) feedback.holdRing(id, sign);
+      feedback.releaseHold(id);
     } else if (bar) {
       feedback.stopBar(id, sign, Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) || 1);
+    }
+  }
+
+  function showStuck(hit: IntentHit, along: number): void {
+    if (loosened.has(hit.id)) return;
+    if (hit.kind === 'ring') feedback.holdRing(hit.id, along);
+    else {
+      const bar = barById(board, hit.id);
+      const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
+      feedback.stopBar(hit.id, along, length);
     }
   }
 
@@ -891,33 +892,34 @@ export function mountPlay(options: {
     const clear = intentWorld(INTENT_CLEAR, camera.zoom);
     const stepped = stepAim(board, aimNow(), winnerAt(world), world, clear);
     storeAim(stepped.aim);
-    const step = stepped.step;
-    if (step.type === 'release') {
-      if (step.refuse) refuseLeave(step.id, step.from, world);
-      else if (feedback.holding(step.id)) feedback.releaseHold(step.id);
-    }
-    if (step.type === 'stuck') {
-      if (step.hit.kind === 'ring') feedback.holdRing(step.hit.id, step.along);
-      else {
-        const bar = barById(board, step.hit.id);
-        const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
-        feedback.stopBar(step.hit.id, step.along, length);
+    let locked = false;
+    for (const step of stepped.steps) {
+      if (step.type === 'release') {
+        if (step.refuse) refuseLeave(step.id, step.from, world);
+        else if (feedback.holding(step.id)) {
+          loosened.add(step.id);
+          feedback.releaseHold(step.id);
+        }
+      } else if (step.type === 'stuck') {
+        seekHit = step.hit;
+        showStuck(step.hit, step.along);
+      } else if (step.type === 'lock') {
+        const next = beginDrag(board, step.hit, step.from.x, step.from.y);
+        if (!next) continue;
+        seeking = false;
+        storeAim({ at: null, id: null, along: 0, cross: 0, refuse: false });
+        drag = next;
+        nudgeSign = 0;
+        nudgeBroken = false;
+        dragMoved = false;
+        feedback.arm(step.hit.id);
+        pulseHaptic('grab');
+        locked = true;
       }
-      return false;
     }
-    if (step.type !== 'lock') return false;
-    const next = beginDrag(board, step.hit, step.from.x, step.from.y);
-    if (!next) return false;
-    seeking = false;
-    storeAim({ at: null, id: null, along: 0, cross: 0, refuse: false });
-    drag = next;
-    nudgeSign = 0;
-    nudgeBroken = false;
-    dragMoved = false;
-    choiceLocked = true;
-    feedback.arm(step.hit.id);
-    pulseHaptic('grab');
-    return true;
+    seekHit = seekId && seekRefuse ? (seekHit?.id === seekId ? seekHit : null) : null;
+    if (!locked) syncMeshes();
+    return locked;
   }
 
   function onPointerMove(event: PointerEvent): void {
@@ -941,10 +943,6 @@ export function mountPlay(options: {
         if (!world) continue;
         if (seeking && !commitSeek(world)) continue;
         if (!drag) continue;
-        if (handoffSeek(world)) {
-          commitSeek(world);
-          continue;
-        }
         rejected = applySample(world);
         applied += frameApplied;
         saw = true;
@@ -983,12 +981,7 @@ export function mountPlay(options: {
     let saw = false;
     for (const point of points) {
       const world = worldFromEvent(point, false);
-      if (!world) continue;
-      if (handoffSeek(world)) {
-        commitSeek(world);
-        continue;
-      }
-      if (!drag) continue;
+      if (!world || !drag) continue;
       if (drag.kind === 'ring' && feedback.holding(drag.id)) {
         const ring = ringById(board, drag.id);
         const latched = feedback.holdSign(drag.id);
@@ -1119,10 +1112,12 @@ export function mountPlay(options: {
     seekAlong = 0;
     seekCross = 0;
     seekRefuse = false;
-    choiceLocked = false;
+    seekHit = null;
     nudgeSign = 0;
     nudgeBroken = false;
     pointerId = null;
+    loosened.clear();
+    feedback.releaseHeld();
     const stayed = views.some((view) => view.id === clicked.id && !view.falling);
     const held = feedback.holding(clicked.id);
     if (cancel || !stayed) feedback.clearIf(clicked.id);

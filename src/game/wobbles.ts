@@ -51,6 +51,7 @@ export function mountWobbles() {
     },
     holdRing(id: string, rejected: number): void {
       const pose = poseOf(id);
+      if (pose && !pose.body.hold) return;
       const sign = heldSign(pose?.body.hold ? pose.body.sign : null, rejected);
       if (sign === null || pose?.body.hold) return;
       const body = beginRecoil(sign, RING_RECOIL_MAX, true);
@@ -66,6 +67,12 @@ export function mountWobbles() {
     release(id: string): void {
       const pose = poseOf(id);
       if (pose?.body.hold) releaseHold(pose.body);
+    },
+    /** Every ring still frozen at the tight angle starts its wobble now. */
+    releaseHeld(): void {
+      for (const pose of poses) {
+        if (pose.body.hold) releaseHold(pose.body);
+      }
     },
     clear(id?: string): void {
       poses = id ? poses.filter((item) => item.id !== id) : [];

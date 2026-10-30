@@ -70,11 +70,33 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
   return Math.hypot(ax - bx, ay - by);
 }
 
-function freeRing(board: Board, id: string): { neg: boolean; pos: boolean } {
+let freedomBoard: Board | null = null;
+let freedomStamp = '';
+let freedom = new Map<string, { neg: boolean; pos: boolean }>();
+
+/** Mobility does not change until some ring or bar actually moves. */
+function freedomOf(board: Board, kind: 'ring' | 'bar', id: string): { neg: boolean; pos: boolean } {
+  let stamp = '';
+  for (const ring of board.rings) stamp += `${ring.id}:${ring.theta.toFixed(4)};`;
+  for (const bar of board.bars) stamp += `${bar.id}:${bar.t.toFixed(4)};`;
+  if (freedomBoard !== board || freedomStamp !== stamp) {
+    freedomBoard = board;
+    freedomStamp = stamp;
+    freedom = new Map();
+  }
+  const key = `${kind}:${id}`;
+  const hit = freedom.get(key);
+  if (hit) return hit;
+  const next = kind === 'ring' ? probeRing(board, id) : probeBar(board, id);
+  freedom.set(key, next);
+  return next;
+}
+
+function probeRing(board: Board, id: string): { neg: boolean; pos: boolean } {
   const ring = ringById(board, id);
   if (!ring) return { neg: false, pos: false };
   const theta = ring.theta;
-  const probe = 0.04;
+  const probe = 0.012;
   rotateRing(board, ring, probe);
   const pos = Math.abs(signedDelta(theta, ring.theta)) > 1e-4;
   ring.theta = theta;
@@ -86,11 +108,11 @@ function freeRing(board: Board, id: string): { neg: boolean; pos: boolean } {
   return { neg, pos };
 }
 
-function freeBar(board: Board, id: string): { neg: boolean; pos: boolean } {
+function probeBar(board: Board, id: string): { neg: boolean; pos: boolean } {
   const bar = barById(board, id);
   if (!bar) return { neg: false, pos: false };
   const t = bar.t;
-  const probe = 0.03;
+  const probe = 0.008;
   moveBar(board, bar, t + probe);
   const pos = bar.t > t + 1e-4;
   bar.t = t;
@@ -155,7 +177,7 @@ export function listCandidates(board: Board, x: number, y: number, _pad: number,
     if (PLACE_RANK[hit.place] < PLACE_RANK[hits[at].place]) hits[at] = hit;
   };
   for (const ring of board.rings) {
-    const free = freeRing(board, ring.id);
+    const free = freedomOf(board, 'ring', ring.id);
     const ray = rayIds.includes(ring.id);
     const d = dist(ring.x, ring.y, x, y);
     const mid = (ring.inner + ring.outer) / 2;
@@ -166,7 +188,7 @@ export function listCandidates(board: Board, x: number, y: number, _pad: number,
     }
   }
   for (const bar of board.bars) {
-    const free = freeBar(board, bar.id);
+    const free = freedomOf(board, 'bar', bar.id);
     const ray = rayIds.includes(bar.id);
     const onBuckle = board.latches.some(
       (latch) => latch.barId === bar.id && latch.release === 'sleeve' && buckleCovers(bar, x, y, latch.x, latch.y),

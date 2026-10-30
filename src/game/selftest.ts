@@ -14,7 +14,7 @@ import { ringChipPoints } from './shatter';
 import { DESIGN_HEIGHT, DESIGN_WIDTH } from '../adapt/design';
 import { emptyHand, handCamera, handDown, handUp } from './hand';
 import { INTENT_PAD, chooseIntent, intentWorld, listCandidates, liveTarget, operates } from './intent';
-import { emptyAim, stepAim } from './stroke';
+import { emptyAim, seekTarget, stepAim } from './stroke';
 import { VIEW_H } from './camera';
 import { breakPraise, clearPoints, freshPraise, notePraiseClear, placePraise } from './praise';
 
@@ -378,7 +378,7 @@ const onRim = liveTarget(loose, looseRing.x + looseRing.outer, looseRing.y);
 assert(onRim !== null && operates(loose, onRim, looseRing.x + looseRing.outer, looseRing.y, looseRing.x + looseRing.outer, looseRing.y + 0.2, 0.05), 'a tangential stroke operates the ring');
 assert(onRim !== null && !operates(loose, onRim, looseRing.x + looseRing.outer, looseRing.y, looseRing.x + looseRing.outer + 0.2, looseRing.y, 0.05), 'a radial stroke does not operate the ring');
 const onto = stepAim(loose, emptyAim(), onRim, { x: looseRing.x + looseRing.outer, y: looseRing.y }, 0.05);
-assert(onto.step.type === 'watch' && onto.aim.id === looseRing.id, 'arriving on a live ring only watches');
+assert(onto.steps.some((step) => step.type === 'watch') && onto.aim.id === looseRing.id, 'arriving on a live ring only watches');
 const aimLock = stepAim(
   loose,
   onto.aim,
@@ -386,7 +386,7 @@ const aimLock = stepAim(
   { x: looseRing.x + looseRing.outer, y: looseRing.y + 0.2 },
   0.05,
 );
-assert(aimLock.step.type === 'lock', 'an accumulated tangential stroke locks the ring');
+assert(aimLock.steps.some((step) => step.type === 'lock'), 'an accumulated tangential stroke locks the ring');
 assert(liveTarget(loose, looseRing.x + looseRing.outer * 3, looseRing.y) === null, 'empty space locks nothing');
 const frozen = emptyBoard();
 frozen.volumes = false;
@@ -413,6 +413,46 @@ frozen.pins.push({
   stopHalf: 0,
 });
 assert(liveTarget(frozen, -0.55, 0) === null, 'a slide onto a stuck ring does not lock it');
+frozen.rings.push({
+  id: 'stuck-b',
+  kind: 'ring',
+  x: 3,
+  y: 0,
+  inner: 0.42,
+  outer: 0.68,
+  gap: 0.02,
+  theta: 0,
+  connectors: [],
+});
+frozen.pins.push({
+  id: 'freeze-b',
+  ownerId: null,
+  localAngle: 0,
+  localRadius: 0,
+  x: 3,
+  y: 0.55,
+  role: 'block',
+  limitRingId: null,
+  stopHalf: 0,
+});
+const hitA = listCandidates(frozen, -0.55, 0, 0).find((hit) => hit.id === 'stuck');
+const hitB = listCandidates(frozen, 2.45, 0, 0).find((hit) => hit.id === 'stuck-b');
+assert(hitA !== undefined && !hitA.neg && !hitA.pos, 'the first stuck ring cannot move');
+assert(hitB !== undefined && !hitB.neg && !hitB.pos, 'the next stuck ring cannot move');
+const stay = stepAim(frozen, emptyAim(), hitA!, { x: -0.55, y: 0 }, 0.05);
+assert(stay.steps.some((step) => step.type === 'stuck') && stay.aim.id === 'stuck', 'a stuck ring is held without locking');
+const leave = stepAim(frozen, stay.aim, hitB!, { x: 2.45, y: 0 }, 0.05);
+const released = leave.steps.find((step) => step.type === 'release');
+assert(
+  released?.type === 'release' && released.id === 'stuck' && released.refuse && leave.aim.id === 'stuck-b' && leave.steps.some((step) => step.type === 'stuck'),
+  'reaching the next stuck ring releases the previous one and starts the next wobble',
+);
+const there = stepAim(frozen, leave.aim, hitB!, { x: 2.45, y: 0.08 }, 0.05);
+assert(there.steps.some((step) => step.type === 'stuck') && there.aim.id === 'stuck-b', 'the next stuck ring is aimed on its own');
+assert(seekTarget('stuck', true, true, hitA!, null, hitB!)?.id === 'stuck', 'an immovable ring stays while the finger is inside its outer circle');
+assert(seekTarget('stuck', true, false, hitA!, null, hitB!)?.id === 'stuck-b', 'past the outer circle the stem does not keep the previous ring');
+const live = { ...hitA!, id: 'live', neg: true, pos: true };
+assert(seekTarget('live', false, true, live, null, hitB!)?.id === 'live', 'an operable aim stays when nobody else leads');
 const occupied = emptyBoard();
 occupied.rings.push({
   id: 'host',

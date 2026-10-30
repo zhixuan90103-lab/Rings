@@ -15,9 +15,9 @@ export type HapticFeel = Record<HapticKind, HapticPair>;
 
 export const HAPTIC_FEEL_DEFAULT: HapticFeel = {
   grab: { intensity: 0.3, sharpness: 0.3 },
-  hit: { intensity: 0.42, sharpness: 1 },
-  ready: { intensity: 0.34, sharpness: 0.4 },
-  clear: { intensity: 0.55, sharpness: 0.45 },
+  hit: { intensity: 0.3, sharpness: 1 },
+  ready: { intensity: 0.4, sharpness: 0.59 },
+  clear: { intensity: 0.45, sharpness: 0.33 },
 };
 
 const KEY = 'rings.haptic-feel';

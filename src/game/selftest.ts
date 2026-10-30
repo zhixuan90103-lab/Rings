@@ -12,7 +12,7 @@ import { BAR_RECOIL_WORLD, RING_RECOIL_MAX, WOBBLE_CYCLES, WOBBLE_SECONDS, begin
 import { ringChipPoints } from './shatter';
 import { DESIGN_HEIGHT, DESIGN_WIDTH } from '../adapt/design';
 import { emptyHand, handCamera, handDown, handUp } from './hand';
-import { INTENT_PAD, chooseIntent, intentWorld, listCandidates } from './intent';
+import { INTENT_PAD, chooseIntent, intentWorld, listCandidates, liveTarget, operates } from './intent';
 import { VIEW_H } from './camera';
 import { breakPraise, clearPoints, freshPraise, notePraiseClear, placePraise } from './praise';
 
@@ -366,8 +366,41 @@ const gapPoint = {
 };
 const gapHit = listCandidates(loose, gapPoint.x, gapPoint.y, pad);
 assert(gapHit.length === 1 && gapHit[0].id === looseRing.id && gapHit[0].place === 'foot', 'an empty gap is the ring footprint');
-const outside = listCandidates(loose, looseRing.x + looseRing.outer + pad * 0.5, looseRing.y, pad);
+const ringPad = looseRing.outer * INTENT_PAD;
+const outside = listCandidates(loose, looseRing.x + looseRing.outer + ringPad * 0.5, looseRing.y, pad);
 assert(outside.some((hit) => hit.id === looseRing.id && hit.place === 'pad'), 'outside the disc is only a pad');
+const pastRing = listCandidates(loose, looseRing.x + looseRing.outer + ringPad * 1.5, looseRing.y, pad);
+assert(!pastRing.some((hit) => hit.id === looseRing.id), 'past a tenth of the outer radius misses the ring');
+assert(liveTarget(loose, looseRing.x, looseRing.y)?.id === looseRing.id, 'a slide onto a live ring locks that ring');
+const onRim = liveTarget(loose, looseRing.x + looseRing.outer, looseRing.y);
+assert(onRim !== null && operates(loose, onRim, looseRing.x + looseRing.outer, looseRing.y, looseRing.x + looseRing.outer, looseRing.y + 0.2, 0.05), 'a tangential stroke operates the ring');
+assert(onRim !== null && !operates(loose, onRim, looseRing.x + looseRing.outer, looseRing.y, looseRing.x + looseRing.outer + 0.2, looseRing.y, 0.05), 'a radial stroke does not operate the ring');
+assert(liveTarget(loose, looseRing.x + looseRing.outer * 3, looseRing.y) === null, 'empty space locks nothing');
+const frozen = emptyBoard();
+frozen.volumes = false;
+frozen.rings.push({
+  id: 'stuck',
+  kind: 'ring',
+  x: 0,
+  y: 0,
+  inner: 0.42,
+  outer: 0.68,
+  gap: 0.02,
+  theta: 0,
+  connectors: [],
+});
+frozen.pins.push({
+  id: 'freeze-only',
+  ownerId: null,
+  localAngle: 0,
+  localRadius: 0,
+  x: 0,
+  y: 0.55,
+  role: 'block',
+  limitRingId: null,
+  stopHalf: 0,
+});
+assert(liveTarget(frozen, -0.55, 0) === null, 'a slide onto a stuck ring does not lock it');
 const occupied = emptyBoard();
 occupied.rings.push({
   id: 'host',
@@ -427,12 +460,15 @@ assert(onStuck.some((hit) => hit.id === 'stuck' && hit.place === 'solid' && !hit
 assert(onStuck.some((hit) => hit.id === 'wide' && hit.place === 'foot' && (hit.neg || hit.pos)), 'the disc behind it can turn');
 assert(chooseIntent(direct, onStuck, -0.55, 0, -0.55, 0, false)?.id === 'wide', 'a stuck solid yields to the live hole around it');
 occupied.volumes = false;
-const besideStick = listCandidates(occupied, 0, 0.25, pad);
+const besideStick = listCandidates(occupied, 0, 0.17, pad);
 assert(besideStick.some((hit) => hit.id === 'host' && hit.place === 'foot'), 'a miss beside the bar still sees the ring');
-assert(chooseIntent(occupied, besideStick, 0, 0.25, 0, 0.25, false)?.id === 'host', 'the ring footprint outscores the bar pad');
-const closeToStick = listCandidates(occupied, 0, 0.12, pad);
-assert(closeToStick.some((hit) => hit.id === 'stick' && hit.place === 'solid'), 'a hole press within 2% of the bar counts as the bar');
-assert(chooseIntent(occupied, closeToStick, 0, 0.12, 0, 0.12, false)?.id === 'stick', 'a press close to the bar in the hole selects the bar');
+assert(!besideStick.some((hit) => hit.id === 'stick'), 'past 90% of the bar radius misses the bar');
+assert(chooseIntent(occupied, besideStick, 0, 0.17, 0, 0.17, false)?.id === 'host', 'the ring footprint wins once the bar margin is missed');
+const closeToStick = listCandidates(occupied, 0, 0.1, pad);
+assert(closeToStick.some((hit) => hit.id === 'stick' && hit.place === 'solid'), 'a hole press within 90% of the bar radius counts as the bar');
+assert(chooseIntent(occupied, closeToStick, 0, 0.1, 0, 0.1, false)?.id === 'stick', 'a press close to the bar in the hole selects the bar');
+const outsidePad = listCandidates(occupied, 0.5, 0.11, pad);
+assert(outsidePad.some((hit) => hit.id === 'stick' && hit.place === 'pad'), 'the same margin outside the hole is only a pad');
 const gapMouth = {
   x: ((occupied.rings[0].inner + occupied.rings[0].outer) / 2),
   y: 0,
@@ -455,9 +491,10 @@ const hornPoint = {
   y: gapMouth.x * Math.sin(horn),
 };
 const onHorn = listCandidates(occupied, hornPoint.x, hornPoint.y, pad);
+assert(!onHorn.some((hit) => hit.id === 'stick'), 'the gap horn sits outside the bar radius margin');
 assert(
-  chooseIntent(occupied, onHorn, hornPoint.x, hornPoint.y, hornPoint.x + 0.08, hornPoint.y, false)?.id === 'stick',
-  'sliding along the bar from the gap horn takes the bar',
+  chooseIntent(occupied, onHorn, hornPoint.x, hornPoint.y, hornPoint.x + 0.08, hornPoint.y, false)?.id === 'host',
+  'a stroke at the gap horn takes the ring',
 );
 const stacked = emptyBoard();
 stacked.volumes = true;

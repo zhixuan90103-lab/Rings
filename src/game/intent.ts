@@ -11,7 +11,7 @@ import { VIEW_H } from './camera';
 import { PART, buckleMetrics } from './parts';
 import { barCovers, barSegment, barStillInBuckle, buckleCovers, ringCovers } from './volume';
 
-/** Outer grab, beyond the drawn band or bar, as a fraction of design width. */
+/** Outer grab past a ring's outer radius, as a fraction of that radius. */
 export const INTENT_PAD = 0.1;
 /** Travel that confirms turn-versus-slide, as a fraction of design width. */
 export const INTENT_WINDOW = 0.02;
@@ -19,8 +19,8 @@ export const INTENT_WINDOW = 0.02;
 export const INTENT_SLEEVE = 0.02;
 /** Along-axis travel, as a fraction of design width, before a clear stroke may change the score. */
 export const INTENT_CLEAR = 0.01;
-/** A miss this close to a bar, inside a ring hole, counts as hitting that bar. */
-export const INTENT_BAR_NEAR = 0.02;
+/** Bar grab past the drawn capsule, as a fraction of that bar's radius. Inside a hole the same margin counts as a hit. */
+export const INTENT_BAR_REACH = 0.9;
 
 /**
  * One table with `docs/ROTATE-RINGS.md` §4. Lower wins.
@@ -141,7 +141,7 @@ function distToBar(bar: BarBody, x: number, y: number): number {
  * Every piece the press could mean. A closer place on the same piece replaces a farther one.
  * The ray never adds a piece that the geometry missed.
  */
-export function listCandidates(board: Board, x: number, y: number, pad: number, rayIds: string[] = []): IntentHit[] {
+export function listCandidates(board: Board, x: number, y: number, _pad: number, rayIds: string[] = []): IntentHit[] {
   const hits: IntentHit[] = [];
   const put = (hit: IntentHit) => {
     const at = hits.findIndex((item) => item.id === hit.id);
@@ -158,7 +158,7 @@ export function listCandidates(board: Board, x: number, y: number, pad: number, 
     const mid = (ring.inner + ring.outer) / 2;
     if (ringCovers(ring, x, y)) put(hitOf('ring', ring.id, 'solid', free.neg, free.pos, Math.abs(d - mid), ray));
     else if (d <= ring.outer) put(hitOf('ring', ring.id, 'foot', free.neg, free.pos, d, false));
-    else if ((free.neg || free.pos) && d <= ring.outer + pad) {
+    else if ((free.neg || free.pos) && d <= ring.outer * (1 + INTENT_PAD)) {
       put(hitOf('ring', ring.id, 'pad', free.neg, free.pos, d - ring.outer, ray));
     }
   }
@@ -170,8 +170,9 @@ export function listCandidates(board: Board, x: number, y: number, pad: number, 
     );
     if (barCovers(bar, x, y) || onBuckle) put(hitOf('bar', bar.id, 'solid', free.neg, free.pos, distToBar(bar, x, y), ray));
     else {
-      const near = barPad(bar, x, y, pad, free);
-      const beside = near !== null && near <= pad * (INTENT_BAR_NEAR / INTENT_PAD) && inRingHole(board, x, y);
+      const reach = bar.half * INTENT_BAR_REACH;
+      const near = barPad(bar, x, y, reach, free);
+      const beside = near !== null && inRingHole(board, x, y);
       if (beside) put(hitOf('bar', bar.id, 'solid', free.neg, free.pos, near, ray));
       else if (near !== null) put(hitOf('bar', bar.id, 'pad', free.neg, free.pos, near, ray));
     }
@@ -211,6 +212,36 @@ function moves(hit: IntentHit, along: number): boolean {
   if (along > 1e-4) return hit.pos;
   if (along < -1e-4) return hit.neg;
   return false;
+}
+
+/** Signed travel along the piece axis, and the cross-axis part. */
+export function strokeTravel(
+  board: Board,
+  hit: IntentHit,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): { along: number; cross: number } {
+  return travelOf(board, hit, x0, y0, x1, y1);
+}
+
+/** The stroke is operating this piece, not traveling across it. */
+export function operates(
+  board: Board,
+  hit: IntentHit,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  clearAt: number,
+): boolean {
+  const travel = travelOf(board, hit, x0, y0, x1, y1);
+  return (
+    moves(hit, travel.along) &&
+    Math.abs(travel.along) > Math.abs(travel.cross) * SCORE.axis &&
+    Math.abs(travel.along) >= clearAt
+  );
 }
 
 function band(hit: IntentHit): number {
@@ -317,6 +348,19 @@ export function chooseIntent(
   if (mouthOpen) return null;
   if (!second || best.score + SCORE.lock < second.score || decided) return best.hit;
   return null;
+}
+
+/** The piece a moving finger would lock. A stuck piece does not count. */
+export function liveTarget(
+  board: Board,
+  x: number,
+  y: number,
+  rayIds: string[] = [],
+  clearAt = intentWorld(INTENT_CLEAR, 1),
+): IntentHit | null {
+  const hit = chooseIntent(board, listCandidates(board, x, y, 0, rayIds), x, y, x, y, true, clearAt);
+  if (!hit || (!hit.neg && !hit.pos)) return null;
+  return hit;
 }
 
 /** World distance still needed to slide this bar out of its sleeve, in the given t sign. Null when this lift should not nudge. */

@@ -102,10 +102,14 @@ export function mountFeedback(root: THREE.Object3D) {
     pose = null;
   }
 
-  function arm(): void {
+  function arm(id?: string): void {
     state.armed = true;
     state.free = 0;
-    clearPose();
+    if (!id || pose?.id === id) clearPose();
+  }
+
+  function clearIf(id: string): void {
+    if (pose?.id === id) pose = null;
   }
 
   function barMax(length: number): number {
@@ -148,6 +152,7 @@ export function mountFeedback(root: THREE.Object3D) {
       if (pose?.body.hold) releaseHold(pose.body);
     },
     clearPose,
+    clearIf,
     arm,
     /** Pieces a lift would remove. The light eases in and out over `HINT_SECONDS`. */
     hint(meshes: THREE.Object3D[]): void {

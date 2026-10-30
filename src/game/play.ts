@@ -44,6 +44,7 @@ import {
   chooseIntent,
   intentWorld,
   listCandidates,
+  strokeTravel,
   sleeveGap,
   type IntentHit,
 } from './intent';
@@ -190,6 +191,13 @@ export function mountPlay(options: {
   let nudgeBroken = false;
   let frameApplied = 0;
   let pending: { hits: IntentHit[]; x0: number; y0: number; dx: number; dy: number; samples: { x: number; y: number }[] } | null = null;
+  let seeking = false;
+  let seekAt: { x: number; y: number } | null = null;
+  let seekId: string | null = null;
+  let seekAlong = 0;
+  let seekCross = 0;
+  /** An operable piece locked by the operate stroke. Touching another piece does not retarget. */
+  let choiceLocked = false;
   let pointerId: number | null = null;
   const fingers = new Map<number, { dx: number; dy: number }>();
   let hand: Hand = emptyHand();
@@ -619,7 +627,8 @@ export function mountPlay(options: {
     nudgeSign = 0;
     nudgeBroken = false;
     dragMoved = false;
-    feedback.arm();
+    choiceLocked = hit.neg || hit.pos;
+    feedback.arm(hit.id);
     let rejected = 0;
     for (const sample of held.samples.slice(1)) rejected = applySample(sample);
     showDragEffect(rejected);
@@ -639,11 +648,19 @@ export function mountPlay(options: {
     drag = null;
     dragMoved = false;
     pending = null;
+    const heldId = seekId;
+    seeking = false;
+    seekAt = null;
+    seekId = null;
+    seekAlong = 0;
+    seekCross = 0;
+    choiceLocked = false;
     nudgeSign = 0;
     nudgeBroken = false;
     pointerId = null;
     lastStamp = -1;
-    feedback.clearPose();
+    if (heldId && feedback.holding(heldId)) feedback.releaseHold();
+    else if (!feedback.busy()) feedback.clearPose();
     syncMeshes();
   }
 
@@ -688,7 +705,7 @@ export function mountPlay(options: {
 
   /** A second contact freezes the piece and starts the camera. The owner's lift settles. */
   function takeOverCamera(): void {
-    const dragging = drag !== null || pending !== null;
+    const dragging = drag !== null || pending !== null || seeking;
     hold = true;
     startPinch(dragging ? PINCH_TAKEOVER_PX : PINCH_LOCK_PX);
   }
@@ -722,12 +739,15 @@ export function mountPlay(options: {
     const world = designToWorld(point.dx, point.dy);
     const ray = pickByRay(world);
     const hits = listCandidates(board, world.x, world.y, intentWorld(INTENT_PAD, camera.zoom), ray ? [ray.id] : []);
-    if (hits.length === 0) return;
-    pulseHaptic('grab');
-    pending = { hits, x0: world.x, y0: world.y, dx: point.dx, dy: point.dy, samples: [{ x: world.x, y: world.y }] };
     pointerId = event.pointerId;
     lastStamp = event.timeStamp;
     canvas.setPointerCapture(event.pointerId);
+    if (hits.length === 0) {
+      seeking = true;
+      return;
+    }
+    pulseHaptic('grab');
+    pending = { hits, x0: world.x, y0: world.y, dx: point.dx, dy: point.dy, samples: [{ x: world.x, y: world.y }] };
     if (chooseIntent(board, hits, world.x, world.y, world.x, world.y, false, intentWorld(INTENT_CLEAR, camera.zoom))) {
       lockPending(true);
     }
@@ -754,6 +774,116 @@ export function mountPlay(options: {
     return fresh.length > 0 ? fresh : [event];
   }
 
+  function winnerAt(world: { x: number; y: number }): IntentHit | null {
+    const ray = pickByRay(world);
+    const clear = intentWorld(INTENT_CLEAR, camera.zoom);
+    const hits = listCandidates(board, world.x, world.y, 0, ray ? [ray.id] : []);
+    return chooseIntent(board, hits, world.x, world.y, world.x, world.y, true, clear);
+  }
+
+  /** Reaching another piece gives the previous one back and keeps choosing. */
+  function handoffSeek(world: { x: number; y: number }): boolean {
+    if (!drag || choiceLocked) return false;
+    const hit = winnerAt(world);
+    if (!hit || hit.id === drag.id) return false;
+    const left = drag;
+    const from = { x: left.x, y: left.y };
+    cancelDrag(board, left);
+    const along = strokeTravel(
+      board,
+      { kind: left.kind, id: left.id, place: 'solid', neg: true, pos: true, near: 0, ray: false },
+      from.x,
+      from.y,
+      world.x,
+      world.y,
+    ).along;
+    const sign = Math.abs(along) > 1e-4 ? along : 1;
+    if (left.kind === 'ring') {
+      feedback.holdRing(left.id, sign);
+      if (feedback.holding(left.id)) feedback.releaseHold();
+    } else {
+      const bar = barById(board, left.id);
+      const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
+      feedback.stopBar(left.id, sign, length);
+    }
+    drag = null;
+    dragMoved = false;
+    choiceLocked = false;
+    seeking = true;
+    seekAt = null;
+    seekId = null;
+    seekAlong = 0;
+    seekCross = 0;
+    nudgeSign = 0;
+    nudgeBroken = false;
+    syncMeshes();
+    return true;
+  }
+
+  /** Switching targets releases the piece that was held in the blocked direction. */
+  function releaseSeek(): void {
+    if (seekId && feedback.holding(seekId)) feedback.releaseHold();
+    seekId = null;
+    seekAlong = 0;
+    seekCross = 0;
+  }
+
+  /** Follow the piece under the finger. Lock only when the stroke operates that piece. */
+  function commitSeek(world: { x: number; y: number }): boolean {
+    const clear = intentWorld(INTENT_CLEAR, camera.zoom);
+    const hit = winnerAt(world);
+    const from = seekAt;
+    seekAt = world;
+    if (!hit) {
+      releaseSeek();
+      return false;
+    }
+    if (!hit.neg && !hit.pos) {
+      if (seekId !== hit.id) releaseSeek();
+      if (seekId === hit.id && from) {
+        const along = strokeTravel(board, hit, from.x, from.y, world.x, world.y).along;
+        if (hit.kind === 'ring') feedback.holdRing(hit.id, along);
+        else {
+          const bar = barById(board, hit.id);
+          const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
+          feedback.stopBar(hit.id, along, length);
+        }
+      }
+      seekId = hit.id;
+      return false;
+    }
+    if (seekId !== hit.id) releaseSeek();
+    const same = seekId === hit.id && from !== null;
+    seekId = hit.id;
+    if (same && from) {
+      const travel = strokeTravel(board, hit, from.x, from.y, world.x, world.y);
+      seekAlong += travel.along;
+      seekCross += travel.cross;
+    }
+    const sign = Math.sign(seekAlong);
+    const can = sign > 0 ? hit.pos : sign < 0 ? hit.neg : false;
+    const ready =
+      can &&
+      Math.abs(seekAlong) > Math.abs(seekCross) * 1.5 &&
+      Math.abs(seekAlong) >= clear;
+    if (!ready || !from) return false;
+    const next = beginDrag(board, hit, from.x, from.y);
+    if (!next) return false;
+    seeking = false;
+    seekAt = null;
+    seekId = null;
+    seekAlong = 0;
+    seekCross = 0;
+    drag = next;
+    nudgeSign = 0;
+    nudgeBroken = false;
+    dragMoved = false;
+    choiceLocked = true;
+    feedback.arm(hit.id);
+    pulseHaptic('grab');
+    return true;
+  }
+
   function onPointerMove(event: PointerEvent): void {
     if (fingers.has(event.pointerId)) {
       const point = rememberFinger(event);
@@ -765,10 +895,44 @@ export function mountPlay(options: {
     }
     if (hold || event.pointerId !== pointerId) return;
     const points = pointerPoints(event);
+    if (seeking) {
+      let rejected = 0;
+      let applied = 0;
+      let saw = false;
+      for (const point of points) {
+        const world = worldFromEvent(point, false);
+        if (!world) continue;
+        if (seeking && !commitSeek(world)) continue;
+        if (!drag) continue;
+        if (handoffSeek(world)) {
+          commitSeek(world);
+          continue;
+        }
+        rejected = applySample(world);
+        applied += frameApplied;
+        saw = true;
+      }
+      if (!saw) return;
+      frameApplied = applied;
+      showDragEffect(rejected);
+      return;
+    }
     if (pending) {
       for (const point of points) {
         const world = worldFromEvent(point, false);
         if (world) pending.samples.push(world);
+      }
+      const last = pending.samples[pending.samples.length - 1];
+      const onto = last ? winnerAt(last) : null;
+      if (onto && !pending.hits.some((hit) => hit.id === onto.id)) {
+        pending = null;
+        seeking = true;
+        seekAt = null;
+        seekId = null;
+        seekAlong = 0;
+        seekCross = 0;
+        commitSeek(last);
+        return;
       }
       const finger = rememberFinger(event);
       const travel = finger ? Math.hypot(finger.dx - pending.dx, finger.dy - pending.dy) : 0;
@@ -782,6 +946,11 @@ export function mountPlay(options: {
     for (const point of points) {
       const world = worldFromEvent(point, false);
       if (!world) continue;
+      if (handoffSeek(world)) {
+        commitSeek(world);
+        continue;
+      }
+      if (!drag) continue;
       if (drag.kind === 'ring' && feedback.holding(drag.id)) {
         const ring = ringById(board, drag.id);
         const latched = feedback.holdSign(drag.id);
@@ -906,6 +1075,12 @@ export function mountPlay(options: {
     drag = null;
     dragMoved = false;
     pending = null;
+    seeking = false;
+    seekAt = null;
+    seekId = null;
+    seekAlong = 0;
+    seekCross = 0;
+    choiceLocked = false;
     nudgeSign = 0;
     nudgeBroken = false;
     pointerId = null;
@@ -917,7 +1092,7 @@ export function mountPlay(options: {
       const bar = barById(board, clicked.id);
       const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
       feedback.click(clicked.id, clicked.kind, length);
-    } else feedback.clearPose();
+    } else feedback.clearIf(clicked.id);
     syncMeshes();
   }
 

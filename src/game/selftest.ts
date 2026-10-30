@@ -13,6 +13,7 @@ import { ringChipPoints } from './shatter';
 import { DESIGN_HEIGHT, DESIGN_WIDTH } from '../adapt/design';
 import { emptyHand, handCamera, handDown, handUp } from './hand';
 import { INTENT_PAD, chooseIntent, intentWorld, listCandidates, liveTarget, operates } from './intent';
+import { emptyAim, stepAim } from './stroke';
 import { VIEW_H } from './camera';
 import { breakPraise, clearPoints, freshPraise, notePraiseClear, placePraise } from './praise';
 
@@ -375,6 +376,16 @@ assert(liveTarget(loose, looseRing.x, looseRing.y)?.id === looseRing.id, 'a slid
 const onRim = liveTarget(loose, looseRing.x + looseRing.outer, looseRing.y);
 assert(onRim !== null && operates(loose, onRim, looseRing.x + looseRing.outer, looseRing.y, looseRing.x + looseRing.outer, looseRing.y + 0.2, 0.05), 'a tangential stroke operates the ring');
 assert(onRim !== null && !operates(loose, onRim, looseRing.x + looseRing.outer, looseRing.y, looseRing.x + looseRing.outer + 0.2, looseRing.y, 0.05), 'a radial stroke does not operate the ring');
+const onto = stepAim(loose, emptyAim(), onRim, { x: looseRing.x + looseRing.outer, y: looseRing.y }, 0.05);
+assert(onto.step.type === 'watch' && onto.aim.id === looseRing.id, 'arriving on a live ring only watches');
+const aimLock = stepAim(
+  loose,
+  onto.aim,
+  onRim,
+  { x: looseRing.x + looseRing.outer, y: looseRing.y + 0.2 },
+  0.05,
+);
+assert(aimLock.step.type === 'lock', 'an accumulated tangential stroke locks the ring');
 assert(liveTarget(loose, looseRing.x + looseRing.outer * 3, looseRing.y) === null, 'empty space locks nothing');
 const frozen = emptyBoard();
 frozen.volumes = false;

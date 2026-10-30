@@ -43,6 +43,9 @@ const SCORE = {
   axis: 1.5,
 } as const;
 
+/** Along-axis travel must beat cross-axis travel by this much before it counts as operating. */
+export const INTENT_AXIS = SCORE.axis;
+
 export type IntentPlace = 'solid' | 'foot' | 'pad';
 
 export type IntentHit = {
@@ -239,7 +242,7 @@ export function operates(
   const travel = travelOf(board, hit, x0, y0, x1, y1);
   return (
     moves(hit, travel.along) &&
-    Math.abs(travel.along) > Math.abs(travel.cross) * SCORE.axis &&
+    Math.abs(travel.along) > Math.abs(travel.cross) * INTENT_AXIS &&
     Math.abs(travel.along) >= clearAt
   );
 }

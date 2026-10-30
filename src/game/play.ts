@@ -48,6 +48,7 @@ import {
   sleeveGap,
   type IntentHit,
 } from './intent';
+import { stepAim, type Aim } from './stroke';
 import { emptyHand, handCamera, handDown, handUp, type Hand } from './hand';
 import {
   boardBounds,
@@ -820,66 +821,44 @@ export function mountPlay(options: {
     return true;
   }
 
-  /** Switching targets releases the piece that was held in the blocked direction. */
-  function releaseSeek(): void {
-    if (seekId && feedback.holding(seekId)) feedback.releaseHold();
-    seekId = null;
-    seekAlong = 0;
-    seekCross = 0;
+  function aimNow(): Aim {
+    return { at: seekAt, id: seekId, along: seekAlong, cross: seekCross };
+  }
+
+  function storeAim(aim: Aim): void {
+    seekAt = aim.at;
+    seekId = aim.id;
+    seekAlong = aim.along;
+    seekCross = aim.cross;
   }
 
   /** Follow the piece under the finger. Lock only when the stroke operates that piece. */
   function commitSeek(world: { x: number; y: number }): boolean {
     const clear = intentWorld(INTENT_CLEAR, camera.zoom);
-    const hit = winnerAt(world);
-    const from = seekAt;
-    seekAt = world;
-    if (!hit) {
-      releaseSeek();
-      return false;
-    }
-    if (!hit.neg && !hit.pos) {
-      if (seekId !== hit.id) releaseSeek();
-      if (seekId === hit.id && from) {
-        const along = strokeTravel(board, hit, from.x, from.y, world.x, world.y).along;
-        if (hit.kind === 'ring') feedback.holdRing(hit.id, along);
-        else {
-          const bar = barById(board, hit.id);
-          const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
-          feedback.stopBar(hit.id, along, length);
-        }
+    const stepped = stepAim(board, aimNow(), winnerAt(world), world, clear);
+    storeAim(stepped.aim);
+    const step = stepped.step;
+    if (step.type === 'release' && feedback.holding(step.id)) feedback.releaseHold();
+    if (step.type === 'stuck') {
+      if (step.hit.kind === 'ring') feedback.holdRing(step.hit.id, step.along);
+      else {
+        const bar = barById(board, step.hit.id);
+        const length = bar ? Math.hypot(bar.x1 - bar.x0, bar.y1 - bar.y0) : 1;
+        feedback.stopBar(step.hit.id, step.along, length);
       }
-      seekId = hit.id;
       return false;
     }
-    if (seekId !== hit.id) releaseSeek();
-    const same = seekId === hit.id && from !== null;
-    seekId = hit.id;
-    if (same && from) {
-      const travel = strokeTravel(board, hit, from.x, from.y, world.x, world.y);
-      seekAlong += travel.along;
-      seekCross += travel.cross;
-    }
-    const sign = Math.sign(seekAlong);
-    const can = sign > 0 ? hit.pos : sign < 0 ? hit.neg : false;
-    const ready =
-      can &&
-      Math.abs(seekAlong) > Math.abs(seekCross) * 1.5 &&
-      Math.abs(seekAlong) >= clear;
-    if (!ready || !from) return false;
-    const next = beginDrag(board, hit, from.x, from.y);
+    if (step.type !== 'lock') return false;
+    const next = beginDrag(board, step.hit, step.from.x, step.from.y);
     if (!next) return false;
     seeking = false;
-    seekAt = null;
-    seekId = null;
-    seekAlong = 0;
-    seekCross = 0;
+    storeAim({ at: null, id: null, along: 0, cross: 0 });
     drag = next;
     nudgeSign = 0;
     nudgeBroken = false;
     dragMoved = false;
     choiceLocked = true;
-    feedback.arm(hit.id);
+    feedback.arm(step.hit.id);
     pulseHaptic('grab');
     return true;
   }

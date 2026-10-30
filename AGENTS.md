@@ -71,7 +71,7 @@ npm run ios
 ## 业务怎么加
 
 - 零件外形和组合：改 `src/game/parts.ts`，并同步 `docs/PARTS.md`。已定稿的尺寸、倒角、颜色不要跟着操作改  
-- 操作：`src/game/play.ts` 收指针，`src/game/intent.ts` 定拖谁，`src/game/board.ts` 算环的转角和沿长边的位移。银卡扣不进拖动。柄只在 `connectors`，读档丢掉 `catch:` 旧销。体积关按重叠变深退回，销钉关用禁区弧。跟手和意图以 `docs/ROTATE-RINGS.md` §4 为准  
+- 操作：`src/game/play.ts` 收指针，`src/game/intent.ts` 定拖谁，`src/game/board.ts` 算环的转角和沿长边的位移。银卡扣不进拖动。柄只在 `connectors`，读档丢掉 `catch:` 旧销。体积关按重叠变深退回，销钉关用禁区弧。跟手和意图以 `docs/ROTATE-RINGS.md` §4 为准。试玩镜头以 §7「试玩镜头」为准  
 - 规则：`docs/ROTATE-RINGS.md` 与 `src/game/`。试玩读 `public/levels/`。手写关仍在 `levels.ts`  
 - 编辑：只改 `editor.ts`、`levelio.ts` 和 `packedLevels.ts`。电脑页 `editor.html`。柄用 `{ angle, stem, target }`。选中后拖十字移动、拖外圈旋转。网格默认开，位置吸 `0.1`，旋转吸 15°。加手柄先点生长位置，再点把手位置。保存只写当前摆法。左右对齐是单独的按钮。手机齿轮不进编辑，规则以 `docs/ROTATE-RINGS.md` §9 为准  
 - 保留：adapt / create-renderer / haptics / plugins / `base`  

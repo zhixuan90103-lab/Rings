@@ -1,4 +1,4 @@
-import { beginTwoFinger, boardBounds, cameraForFit, cameraForPinch, choosePinchLock, clampCamera, designNdc, editorFrame, editorPan, editorPanT, editorZoom, editorZoomT, frameFor, frameLift, stepTwoFinger, worldFromDesign, zoomCap } from './camera';
+import { approachCamera, beginTwoFinger, boardBounds, cameraForFit, cameraForPinch, choosePinchLock, clampCamera, designNdc, editorFrame, editorPan, editorPanT, editorZoom, editorZoomT, frameFor, frameLift, PINCH_LOCK_PX, stepTwoFinger, worldFromDesign, zoomCap } from './camera';
 import { PART, connectorLayout, connectorReach } from './parts';
 import { gapCovers, signedDelta, wrapAngle } from './angle';
 import { barById, handlePoint, moveBar, nudgeRing, previewClear, ringById, rotateRing, settle, snapshotForSettle, beginDrag, cancelDrag, dragTo, ringFreeArcs } from './board';
@@ -914,19 +914,48 @@ assert(cancelled.effect === 'none' && cancelled.hand.owner === 1, 'a cancel whil
 const alone = handUp(first.hand, 1, true);
 assert(alone.effect === 'revert', 'a cancel of the only finger restores the piece');
 assert(handCamera(first.hand).effect === 'begin-camera', 'a second touch can open the camera without a pointer id');
-assert(handDown(emptyHand(), 1, false).effect === 'none', 'a press outside the stage does not start a piece');
+const outsidePress = handDown(emptyHand(), 1, false);
+assert(outsidePress.effect === 'none' && outsidePress.hand.owner === null && outsidePress.hand.ids.length === 1, 'a press outside the stage is tracked and does not own a piece');
+const joined = handDown(outsidePress.hand, 2, true);
+assert(joined.effect === 'begin-camera' && joined.hand.owner === null, 'a second finger opens the camera after an outside press');
+const gesture = beginTwoFinger(0, 0, 1, 180, 400, 100);
+const wide = { minX: -100, minY: -100, maxX: 100, maxY: 100 };
+const open = { ...fit, minZoom: 0.2, maxZoom: fit.minZoom * 3 };
+const eased = approachCamera({ x: 0, y: 0, zoom: 1 }, { x: 10, y: 0, zoom: 2 }, 1 / 60);
+assert(eased.x > 0 && eased.x < 10 && eased.zoom > 1 && eased.zoom < 2, 'the shown camera moves part of the way in one frame');
+const stillCamera = approachCamera({ x: 1, y: 2, zoom: 3 }, { x: 9, y: 8, zoom: 4 }, 0);
+assert(stillCamera.x === 1 && stillCamera.y === 2 && stillCamera.zoom === 3, 'a zero timestep does not move the camera');
 assert(choosePinchLock(4, 3, null) === null, 'a small two-finger motion does not lock yet');
-assert(choosePinchLock(1, 2, null, 2) === 'zoom', 'a takeover locks on a two-pixel pinch');
-assert(choosePinchLock(8, 20, null) === 'zoom', 'a wider pinch locks to zoom');
-assert(choosePinchLock(30, 20, 'zoom') === 'zoom', 'a locked zoom ignores a later pan');
+assert(choosePinchLock(8, 36, null) === 'zoom', 'a wider pinch locks to zoom');
 assert(choosePinchLock(30, 10, null) === 'pan', 'a sliding pair locks to pan');
 assert(choosePinchLock(4, 40, 'pan') === 'pan', 'a locked pan ignores a later pinch');
-const gesture = beginTwoFinger(0, 0, 1, 180, 400, 100);
-const waiting = stepTwoFinger(gesture, 184, 400, 100, 0, 0, 1, box, fit);
-assert(waiting.camera === null, 'a two-finger gesture waits until it locks');
-const open = { ...fit, maxZoom: fit.minZoom * 3 };
-const zoomedGesture = stepTwoFinger({ ...gesture, lock: 'zoom' }, 200, 430, 140, 0, 0, 1, box, open);
-assert(zoomedGesture.camera !== null && zoomedGesture.camera.zoom > 1, 'a locked zoom changes zoom around the fingers');
+const oneFinger = stepTwoFinger(gesture, 216, 400, 136, 0, 0, 1, wide, open, PINCH_LOCK_PX, false);
+assert(oneFinger.gesture.lock === 'zoom' && !oneFinger.gesture.settled, 'one finger moving looks like a zoom but does not settle');
+const corrected = stepTwoFinger(oneFinger.gesture, 220, 400, 100, 0, 0, 1, wide, open, PINCH_LOCK_PX, true);
+assert(corrected.gesture.lock === 'pan' && corrected.gesture.settled, 'both fingers moving the same way settles as a pan');
+const waiting = stepTwoFinger(gesture, 184, 400, 100, 0, 0, 1, wide, open);
+assert(waiting.camera === null && waiting.gesture.lock === null, 'a two-finger gesture waits until it passes 30 design pixels');
+const pinchStep = stepTwoFinger(gesture, 200, 430, 140, 0, 0, 1, wide, open);
+const zoomedCam = pinchStep.camera;
+assert(pinchStep.gesture.lock === 'zoom' && zoomedCam !== null, 'a wider pinch locks to zoom on the crossing sample');
+if (zoomedCam) {
+  assert(Math.abs(zoomedCam.zoom - 1.4) < 1e-6, 'the crossing pinch zooms from the press span');
+  const beforeZoom = worldFromDesign(200, 430, 0, 0, 1);
+  const afterZoom = worldFromDesign(200, 430, zoomedCam.x, zoomedCam.y, zoomedCam.zoom);
+  assert(Math.abs(afterZoom.x - beforeZoom.x) < 1e-6 && Math.abs(afterZoom.y - beforeZoom.y) < 1e-6, 'a zoom lock does not pan');
+  const stillZoom = stepTwoFinger(pinchStep.gesture, 240, 470, 140, zoomedCam.x, zoomedCam.y, zoomedCam.zoom, wide, open);
+  assert(stillZoom.gesture.lock === 'zoom' && stillZoom.camera !== null && Math.abs(stillZoom.camera.zoom - zoomedCam.zoom) < 1e-6, 'a locked zoom ignores a later slide');
+}
+const panned = stepTwoFinger(gesture, 220, 400, 108, 0, 0, 1, wide, open);
+const pannedCam = panned.camera;
+assert(panned.gesture.lock === 'pan' && pannedCam !== null && Math.abs(pannedCam.zoom - 1) < 1e-6, 'a slide locks to pan and does not zoom');
+if (pannedCam) {
+  const pressPoint = worldFromDesign(180, 400, 0, 0, 1);
+  const underFingers = worldFromDesign(220, 400, pannedCam.x, pannedCam.y, pannedCam.zoom);
+  assert(Math.abs(underFingers.x - pressPoint.x) < 1e-6 && Math.abs(underFingers.y - pressPoint.y) < 1e-6, 'the crossing slide pans from the press midpoint');
+  const stillPan = stepTwoFinger(panned.gesture, 220, 400, 160, pannedCam.x, pannedCam.y, pannedCam.zoom, wide, open);
+  assert(stillPan.gesture.lock === 'pan' && stillPan.camera !== null && Math.abs(stillPan.camera.zoom - 1) < 1e-6, 'a locked pan ignores a later pinch');
+}
 assert(editorZoom(2, 0) === 0.5, 'the editor slider can go four times farther than the fit');
 assert(editorZoom(2, 0.5) === 2, 'the editor slider midpoint is the fit zoom');
 assert(editorZoom(2, 1) === 8, 'the editor slider ends four times closer');

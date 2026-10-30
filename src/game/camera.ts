@@ -180,10 +180,26 @@ export function cameraForFit(bounds: Aabb, frame: Frame): { x: number; y: number
   };
 }
 
-/** Design pixels of movement before a two-finger gesture locks to zoom or pan. */
-export const PINCH_LOCK_PX = 12;
-/** A second finger that interrupts a drag locks the camera on a much shorter move. */
-export const PINCH_TAKEOVER_PX = 2;
+/** How fast the shown camera closes on the gesture target. Higher is snappier. */
+export const CAMERA_APPROACH = 18;
+
+/** Design pixels of midpoint or span change before a two-finger gesture moves the camera. */
+export const PINCH_LOCK_PX = 30;
+
+/** Move the shown camera part of the way to the target. A short sample does not arrive in one step. */
+export function approachCamera(
+  current: { x: number; y: number; zoom: number },
+  goal: { x: number; y: number; zoom: number },
+  dt: number,
+  rate = CAMERA_APPROACH,
+): { x: number; y: number; zoom: number } {
+  const t = dt <= 0 ? 0 : 1 - Math.exp(-rate * dt);
+  return {
+    x: current.x + (goal.x - current.x) * t,
+    y: current.y + (goal.y - current.y) * t,
+    zoom: current.zoom + (goal.zoom - current.zoom) * t,
+  };
+}
 
 export type PinchLock = 'zoom' | 'pan';
 
@@ -206,7 +222,10 @@ export type TwoFinger = {
   y: number;
   midX: number;
   midY: number;
+  /** Set for the rest of the gesture once one action passes the dead zone. */
   lock: PinchLock | null;
+  /** A settled lock stays until release. An unsettled one can change on the next sample. */
+  settled: boolean;
 };
 
 export function beginTwoFinger(
@@ -217,14 +236,16 @@ export function beginTwoFinger(
   midY: number,
   dist: number,
 ): TwoFinger {
-  return { zoom, dist, x: camX, y: camY, midX, midY, lock: null };
+  return { zoom, dist, x: camX, y: camY, midX, midY, lock: null, settled: false };
 }
 
 /**
- * One two-finger gesture locks to zoom or pan, then stays on that.
- * Zoom keeps the point under the current midpoint.
- * Pan keeps the point that was under the midpoint when the lock began.
- * Returns null until the lock distance is passed. Clamp does not change zoom.
+ * Until the midpoint or the finger span moves `lockPx` design pixels, the camera stays.
+ * The larger change locks the gesture: zoom only scales, pan only slides.
+ * The crossing sample counts for the action that won. A settled lock ignores the other action until release.
+ * Pass confirm false while one finger has not reported a move yet, so a one-finger sample cannot stick.
+ * Zoom keeps the world point under the current midpoint. Pan keeps the press midpoint's world point under the current midpoint.
+ * Returns null until the dead zone is passed. Clamp does not change zoom.
  */
 export function stepTwoFinger(
   gesture: TwoFinger,
@@ -237,22 +258,20 @@ export function stepTwoFinger(
   bounds: Aabb,
   frame: Frame,
   lockPx = PINCH_LOCK_PX,
+  confirm = true,
 ): { gesture: TwoFinger; camera: { x: number; y: number; zoom: number } | null } {
   const midShift = Math.hypot(midX - gesture.midX, midY - gesture.midY);
   const distShift = Math.abs(dist - gesture.dist);
-  const wasLocked = gesture.lock;
-  const lock = choosePinchLock(midShift, distShift, gesture.lock, lockPx);
-  if (!lock || dist < 1e-3) return { gesture: { ...gesture, lock }, camera: null };
-  const base: TwoFinger = wasLocked
-    ? gesture
-    : { ...gesture, lock, x: camX, y: camY, zoom: camZoom, dist, midX, midY };
-  const zooming = lock === 'zoom';
-  const zoom = zooming
-    ? Math.min(frame.maxZoom, Math.max(frame.minZoom, base.zoom * (dist / base.dist)))
-    : base.zoom;
-  const anchor = zooming ? { x: camX, y: camY, zoom: camZoom, midX, midY } : base;
-  const shifted = cameraForPinch(anchor, midX, midY, zoom);
-  return { gesture: { ...base, lock }, camera: clampCamera(shifted.x, shifted.y, zoom, bounds, frame) };
+  const lock = choosePinchLock(midShift, distShift, gesture.settled ? gesture.lock : null, lockPx);
+  const settled = gesture.settled || (confirm && lock !== null);
+  if (!lock || dist < 1e-3) return { gesture: { ...gesture, lock, settled }, camera: null };
+  if (lock === 'zoom') {
+    const zoom = Math.min(frame.maxZoom, Math.max(frame.minZoom, gesture.zoom * (dist / gesture.dist)));
+    const shifted = cameraForPinch({ x: camX, y: camY, zoom: camZoom, midX, midY }, midX, midY, zoom);
+    return { gesture: { ...gesture, lock, settled }, camera: clampCamera(shifted.x, shifted.y, zoom, bounds, frame) };
+  }
+  const shifted = cameraForPinch(gesture, midX, midY, gesture.zoom);
+  return { gesture: { ...gesture, lock, settled }, camera: clampCamera(shifted.x, shifted.y, gesture.zoom, bounds, frame) };
 }
 
 /** Editor slider runs this many times farther than the fit, and the same times closer. */

@@ -53,10 +53,10 @@ import { emptyHand, handCamera, handDown, handUp, type Hand } from './hand';
 import {
   boardBounds,
   cameraForFit,
+  approachCamera,
   beginTwoFinger,
   clampCamera,
   PINCH_LOCK_PX,
-  PINCH_TAKEOVER_PX,
   editorFrame,
   editorZoom,
   editorZoomT,
@@ -204,7 +204,10 @@ export function mountPlay(options: {
   const fingers = new Map<number, { dx: number; dy: number }>();
   let hand: Hand = emptyHand();
   let pinch: TwoFinger | null = null;
+  let cameraGoal: { x: number; y: number; zoom: number } | null = null;
   let pinchLockPx = PINCH_LOCK_PX;
+  const pinchMoved = new Set<number>();
+  let pinchDirty = false;
   let hold = false;
   let fitted = true;
   let panT = 0.5;
@@ -357,6 +360,25 @@ export function mountPlay(options: {
     camera.updateProjectionMatrix();
   }
 
+  function placeCamera(x: number, y: number, zoom: number, settle: boolean): void {
+    cameraGoal = { x, y, zoom };
+    if (settle) applyCamera(x, y, zoom);
+  }
+
+  function shownCamera(): { x: number; y: number; zoom: number } {
+    return cameraGoal ?? { x: camera.position.x, y: camera.position.y, zoom: camera.zoom };
+  }
+
+  function easeCamera(dt: number): void {
+    if (!cameraGoal) return;
+    const next = approachCamera(
+      { x: camera.position.x, y: camera.position.y, zoom: camera.zoom },
+      cameraGoal,
+      dt,
+    );
+    applyCamera(next.x, next.y, next.zoom);
+  }
+
   function usableRect(): UsableRect {
     const stage = canvas.parentElement;
     const stageRect = stage?.getBoundingClientRect();
@@ -389,13 +411,14 @@ export function mountPlay(options: {
     if (refit) {
       panT = 0.5;
       const fit = cameraForFit(bounds, limits);
-      applyCamera(fit.x, fit.y, fit.zoom);
+      placeCamera(fit.x, fit.y, fit.zoom, true);
       fitted = true;
       return;
     }
     if (editing) return;
-    const next = clampCamera(camera.position.x, camera.position.y, camera.zoom, bounds, limits);
-    applyCamera(next.x, next.y, next.zoom);
+    const base = shownCamera();
+    const next = clampCamera(base.x, base.y, base.zoom, bounds, limits);
+    placeCamera(next.x, next.y, next.zoom, true);
   }
 
   function resize(): void {
@@ -673,7 +696,15 @@ export function mountPlay(options: {
     const midX = (pts[0].dx + pts[1].dx) / 2;
     const midY = (pts[0].dy + pts[1].dy) / 2;
     const dist = Math.hypot(pts[0].dx - pts[1].dx, pts[0].dy - pts[1].dy);
-    pinch = beginTwoFinger(camera.position.x, camera.position.y, camera.zoom, midX, midY, dist);
+    const shown = shownCamera();
+    pinchMoved.clear();
+    pinch = beginTwoFinger(shown.x, shown.y, shown.zoom, midX, midY, dist);
+  }
+
+  function pinchConfirmed(): boolean {
+    let seen = 0;
+    for (const id of fingers.keys()) if (pinchMoved.has(id)) seen += 1;
+    return seen >= 2;
   }
 
   function applyPinch(): void {
@@ -683,21 +714,23 @@ export function mountPlay(options: {
     const dist = Math.hypot(pts[0].dx - pts[1].dx, pts[0].dy - pts[1].dy);
     const midX = (pts[0].dx + pts[1].dx) / 2;
     const midY = (pts[0].dy + pts[1].dy) / 2;
+    const shown = shownCamera();
     const step = stepTwoFinger(
       pinch,
       midX,
       midY,
       dist,
-      camera.position.x,
-      camera.position.y,
-      camera.zoom,
+      shown.x,
+      shown.y,
+      shown.zoom,
       bounds,
       limits,
       pinchLockPx,
+      pinchConfirmed(),
     );
     pinch = step.gesture;
     if (!step.camera) return;
-    applyCamera(step.camera.x, step.camera.y, step.camera.zoom);
+    placeCamera(step.camera.x, step.camera.y, step.camera.zoom, false);
     fitted = false;
   }
 
@@ -708,15 +741,18 @@ export function mountPlay(options: {
 
   /** A second contact freezes the piece and starts the camera. The owner's lift settles. */
   function takeOverCamera(): void {
-    const dragging = drag !== null || pending !== null || seeking;
     hold = true;
-    startPinch(dragging ? PINCH_TAKEOVER_PX : PINCH_LOCK_PX);
+    startPinch(PINCH_LOCK_PX);
   }
 
   function applyHand(next: Hand, effect: ReturnType<typeof handDown>['effect']): void {
     hand = next;
     hold = hand.ids.length > 0 && (hand.camera || hand.owner === null);
-    if (!hand.camera) pinch = null;
+    if (!hand.camera) {
+      pinch = null;
+      pinchDirty = false;
+      pinchMoved.clear();
+    }
     if (effect === 'begin-camera') takeOverCamera();
     else if (effect === 'settle') {
       lockPending(true);
@@ -889,7 +925,8 @@ export function mountPlay(options: {
       const point = rememberFinger(event);
       if (point) fingers.set(event.pointerId, point);
       if (pinch) {
-        applyPinch();
+        pinchMoved.add(event.pointerId);
+        pinchDirty = true;
         return;
       }
     }
@@ -1205,7 +1242,8 @@ export function mountPlay(options: {
     if (!pinch || event.touches.length < 2) return;
     event.preventDefault();
     adoptTouches(event.touches);
-    applyPinch();
+    for (const touch of [...event.touches].slice(0, 2)) pinchMoved.add(touch.identifier);
+    pinchDirty = true;
   }
 
   function onTouchEnd(event: TouchEvent): void {
@@ -1224,7 +1262,7 @@ export function mountPlay(options: {
   function applyEditorView(zoom: number): void {
     const fit = cameraForFit(bounds, limits);
     const frame = editorFrame(fit, zoom, panT, viewSize().h);
-    applyCamera(frame.x, frame.y, frame.zoom);
+    placeCamera(frame.x, frame.y, frame.zoom, true);
     fitted = false;
   }
 
@@ -1240,6 +1278,11 @@ export function mountPlay(options: {
   function frame(now: number): void {
     const dt = Math.min(0.033, (now - last) / 1000);
     last = now;
+    if (pinchDirty) {
+      pinchDirty = false;
+      applyPinch();
+    }
+    easeCamera(dt);
     const viewBottom = camera.position.y - viewSize().h / 2 / Math.max(camera.zoom, 1e-4);
     stepShatters(shatters, viewBottom - SHATTER.chip, dt);
     shatters = shatters.filter((shatter) => {

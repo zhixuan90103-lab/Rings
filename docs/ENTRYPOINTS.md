@@ -73,6 +73,7 @@ HUD 状态行有 `plugin: true/false`。`false` = 仍在默认 `CAPBridgeViewCon
 | 关卡编辑 | 电脑页 `editor.html`。`src/game/editor.ts`、`src/game/levelio.ts`、`public/levels/`。保存只在 `npm run dev` |
 | 手机设置 | `src/game/phoneSettings.ts`。试玩页齿轮。震动测试和三档手感，数值写在滑杆上 |
 | 过关结算 | `play.ts` 计时后 `onCleared`；`result.ts` 弹出 `#result`。重玩再开当前关，下一关向后，最后一关回到第 1 关 |
-| 编辑镜头 | `camera.ts` 的 `editorFrame`。编辑栏「镜头」「上下」两条滑杆 |
+| 试玩镜头 | `docs/ROTATE-RINGS.md` §7「试玩镜头」。`hand.ts` 管手指，`camera.ts` 管判定和跟随，`play.ts` 每帧采样 |
+| 编辑镜头 | `camera.ts` 的 `editorFrame`。编辑栏「镜头」「上下」两条滑杆。不吃两指 |
 | 音效（规划） | [AUDIO.md](./AUDIO.md) |
 | 震动接线 | [HAPTICS.md](./HAPTICS.md) |

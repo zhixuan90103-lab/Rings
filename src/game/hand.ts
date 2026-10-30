@@ -29,7 +29,8 @@ function withoutId(hand: Hand, id: number): Hand {
 
 export function handDown(hand: Hand, id: number, inside: boolean): { hand: Hand; effect: HandEffect } {
   if (hand.ids.includes(id)) return { hand, effect: 'none' };
-  if (hand.ids.length === 0 && !inside) return { hand, effect: 'none' };
+  // A finger outside the stage does not own a piece, but it still counts toward the camera.
+  if (hand.ids.length === 0 && !inside) return { hand: withId(hand, id), effect: 'none' };
   const next = withId(hand, id);
   if (next.ids.length > 2) return { hand: { ...next, camera: false }, effect: hand.camera ? 'stop-camera' : 'none' };
   if (next.ids.length === 2) return { hand: { ...next, camera: true }, effect: 'begin-camera' };
